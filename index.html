@@ -619,12 +619,8 @@
     </div>
 
     <script>
-        // Configuration
-        const isLiveServer = window.location.port === '5500' || window.location.port === '5501';
-        const PROXY_URL = isLiveServer 
-            ? 'http://localhost:3000/api'
-            : window.location.origin + '/api';
-        
+        // Configuration - ACTUALIZADO CON TU URL DE RAILWAY
+        const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
         const DEBUG = false;
 
         // Form handling
