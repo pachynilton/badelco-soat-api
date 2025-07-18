@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -555,89 +556,8 @@ app.get('/api/info', (req, res) => {
 
 // Página principal
 app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Badelco SOAT API - Credenciales Correctas</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; background: #f5f5f5; }
-                .container { max-width: 900px; margin: 40px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                h1 { color: #1e3a8a; margin-bottom: 10px; }
-                .status { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: 600; margin: 20px 0; }
-                .success { background: #10b981; color: white; }
-                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0; }
-                .info-card { background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; }
-                .info-card h3 { margin: 0 0 10px 0; color: #374151; }
-                .test-btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin: 5px; }
-                .test-btn:hover { background: #2563eb; }
-                .ready { background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
-                .credential { font-family: monospace; background: #f3f4f6; padding: 5px; border-radius: 4px; margin: 2px 0; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🚗 Badelco SOAT API <span class="ready">READY</span></h1>
-                <p>Sistema con las credenciales correctas del API</p>
-                
-                <div class="status success">
-                    ✅ Credenciales Configuradas Correctamente
-                </div>
-                
-                <div class="info-grid">
-                    <div class="info-card">
-                        <h3>🔐 Credenciales API</h3>
-                        <div class="credential"><strong>API_KEY:</strong> ${API_KEY.substring(0, 15)}...</div>
-                        <div class="credential"><strong>SECRET_KEY:</strong> ${SECRET_KEY.substring(0, 20)}...</div>
-                        <div class="credential"><strong>AUTH_TOKEN:</strong> ${AUTH_TOKEN.substring(0, 20)}...</div>
-                        <div class="credential"><strong>PRODUCTO:</strong> ${COD_PRODUCTO} (Previsora)</div>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h3>📊 Estado Token</h3>
-                        <p><strong>Actual:</strong> ${currentToken.substring(0, 20)}...</p>
-                        <p><strong>Tipo:</strong> ${isUsingFixedToken ? 'FIJO' : 'GENERADO'}</p>
-                        <p><strong>Edad:</strong> ${Math.floor((new Date() - tokenGeneratedAt) / 60000)} min</p>
-                    </div>
-                </div>
-                
-                <div class="info-card">
-                    <h3>🧪 Pruebas Disponibles</h3>
-                    <a href="/api/test" class="test-btn">Test Simple</a>
-                    <a href="/api/test-generate-token" class="test-btn" onclick="testGenerateToken(event)">Generar Token</a>
-                    <a href="/api/info" class="test-btn">Info Sistema</a>
-                </div>
-                
-                <div class="info-card">
-                    <h3>✅ Funcionalidades:</h3>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li>✅ Token fijo configurado (AUTH_TOKEN)</li>
-                        <li>✅ Generación dinámica con API_KEY + SECRET_KEY</li>
-                        <li>✅ Múltiples estrategias de headers</li>
-                        <li>✅ Fallback automático</li>
-                        <li>✅ Extracción inteligente de datos</li>
-                        <li>✅ Debug completo de respuestas</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <script>
-                async function testGenerateToken(e) {
-                    e.preventDefault();
-                    try {
-                        const response = await fetch('/api/test-generate-token', { method: 'POST' });
-                        const data = await response.json();
-                        alert(JSON.stringify(data, null, 2));
-                    } catch (error) {
-                        alert('Error: ' + error.message);
-                    }
-                }
-            </script>
-        </body>
-        </html>
-    `);
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
-
 // Al final del archivo server.js, cambiar esta línea:
 app.listen(PORT, '0.0.0.0', () => {
     console.log('\n🚀 ================================');
