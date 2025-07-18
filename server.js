@@ -18,7 +18,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'"],
             scriptSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'", "https://dev.same.com.co"]
+            connectSrc: ["'self'", "https://dev.same.com.co", "https://badelco-soat-api-production.up.railway.app"]
         }
     }
 }));
@@ -49,7 +49,15 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ 
+    origin: [
+        'https://badelco-soat-api-production.up.railway.app',
+        'http://localhost:3000',
+        'http://localhost:5500',
+        'http://localhost:5501'
+    ], 
+    credentials: true 
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
