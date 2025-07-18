@@ -638,19 +638,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Inicializar servidor
-app.listen(PORT, '0.0.0.0', () => {
-    console.log('\n🚀 ================================');
-    console.log('🌟 BADELCO SOAT API - READY');
-    console.log('🚀 ================================');
-    console.log(`📡 Puerto: ${PORT}`);
-    console.log(`🌐 URL: http://localhost:${PORT}`);
-    console.log(`🔑 Token configurado: ${AUTH_TOKEN.substring(0, 30)}***`);
-    console.log('🚀 ================================\n');
-    console.log('✅ Sistema listo con credenciales correctas');
-    console.log('🧪 Prueba: http://localhost:' + PORT + '/api/test');
-});
-
 // Al final del archivo server.js, cambiar esta línea:
 app.listen(PORT, '0.0.0.0', () => {
     console.log('\n🚀 ================================');
