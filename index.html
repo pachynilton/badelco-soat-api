@@ -1063,9 +1063,9 @@
             return newDate;
         }
 
-        // FUNCIÓN MEJORADA DE CAPTURA DE PANTALLA
+        // FUNCIÓN MEJORADA DE CAPTURA DE PANTALLA (SIN html2canvas)
         async function captureScreen() {
-            const captureButton = document.querySelector('[onclick="captureScreen()"]');
+            const captureButton = document.getElementById('captureBtn');
             const originalContent = captureButton.innerHTML;
             
             try {
@@ -1073,28 +1073,10 @@
                 captureButton.innerHTML = '<span>⏳</span> <span>Capturando...</span>';
                 captureButton.disabled = true;
                 
-                // Método 1: Usar html2canvas si está disponible (más confiable)
-                if (typeof html2canvas !== 'undefined') {
-                    const canvas = await html2canvas(document.body, {
-                        useCORS: true,
-                        allowTaint: true,
-                        scale: 2,
-                        scrollX: 0,
-                        scrollY: 0,
-                        width: window.innerWidth,
-                        height: document.body.scrollHeight
-                    });
-                    
-                    canvas.toBlob(blob => {
-                        downloadImage(blob, 'cotizacion-soat');
-                    }, 'image/png', 1.0);
-                    
-                    showAlert('Captura de pantalla guardada exitosamente', 'success');
-                    return;
-                }
-                
-                // Método 2: Screen Capture API (navegadores modernos)
+                // Método 1: Screen Capture API (navegadores modernos)
                 if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+                    console.log('📸 Usando Screen Capture API');
+                    
                     const stream = await navigator.mediaDevices.getDisplayMedia({ 
                         video: { 
                             mediaSource: 'screen',
@@ -1126,14 +1108,77 @@
                     return;
                 }
                 
+                // Método 2: Crear canvas manual de los resultados
+                console.log('📸 Creando imagen de resultados');
+                const resultsCard = document.querySelector('.results').parentElement;
+                
+                // Crear canvas personalizado con los datos importantes
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 1000;
+                const ctx = canvas.getContext('2d');
+                
+                // Fondo blanco
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Header
+                ctx.fillStyle = '#e25532';
+                ctx.fillRect(0, 0, canvas.width, 100);
+                
+                // Título
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 32px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Badelco SOAT - Cotización', canvas.width/2, 60);
+                
+                // Contenido
+                ctx.fillStyle = '#272626';
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'left';
+                
+                let y = 150;
+                const lineHeight = 40;
+                
+                // Obtener datos actuales
+                const placa = document.getElementById('placa').value;
+                const precio = document.getElementById('priceDisplay').textContent;
+                
+                const info = [
+                    `Placa: ${placa}`,
+                    `Precio: ${precio}`,
+                    `Fecha: ${new Date().toLocaleDateString('es-CO')}`,
+                    '',
+                    'Información de Pago:',
+                    'Bancolombia: 30685175725',
+                    'Nequi: 3128433999',
+                    '',
+                    'WhatsApp: 3128433999'
+                ];
+                
+                info.forEach(line => {
+                    if (line.startsWith('Información de Pago:')) {
+                        ctx.font = 'bold 24px Arial';
+                    } else {
+                        ctx.font = '20px Arial';
+                    }
+                    ctx.fillText(line, 50, y);
+                    y += lineHeight;
+                });
+                
+                // Descargar imagen
+                canvas.toBlob(blob => {
+                    downloadImage(blob, 'cotizacion-soat');
+                    showAlert('Imagen de cotización creada exitosamente', 'success');
+                }, 'image/png', 1.0);
+                
+            } catch (error) {
+                console.error('Error capturando pantalla:', error);
+                
                 // Método 3: Fallback - Imprimir
                 showAlert('Abriendo diálogo de impresión como alternativa', 'success');
                 window.print();
                 
-            } catch (error) {
-                console.error('Error capturando pantalla:', error);
-                showAlert('No se pudo capturar la pantalla. Usando impresión como alternativa.', 'error');
-                window.print();
             } finally {
                 // Restaurar botón
                 captureButton.innerHTML = originalContent;
@@ -1174,7 +1219,7 @@
             });
             
             // AQUÍ PUEDES CAMBIAR LA URL DE DESTINO
-            const expedicionURL = `https://badelco.co/expedir-soat/?${params.toString()}`;
+            const expedicionURL = `expedicion.html?${params.toString()}`;
             
             // Abrir en nueva ventana/pestaña
             window.open(expedicionURL, '_blank');
@@ -1227,7 +1272,7 @@
                     try {
                         const data = await response.json();
                         console.log('✅ Servidor conectado:', data);
-                        showAlert('Bienvenido a Badelco', 'success');
+                        showAlert('Servidor conectado correctamente', 'success');
                     } catch (jsonError) {
                         console.log('⚠️ Respuesta recibida pero no es JSON válido');
                         showAlert('Servidor responde pero formato incorrecto', 'error');
@@ -1261,14 +1306,6 @@
                 console.log('⚠️ Página servida via HTTP - puede causar problemas');
             }
         });
-        
-        // Cargar html2canvas dinámicamente para mejor captura de pantalla
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        script.onload = () => console.log('📸 html2canvas cargado para mejores capturas');
-        document.head.appendChild(script);
     </script>
 </body>
 </html>
-
-
