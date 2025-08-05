@@ -761,7 +761,7 @@
             const paymentAccounts = document.getElementById('paymentAccounts');
             const paymentInstructions = document.getElementById('paymentInstructions');
             
-            console.log('📊 Datos recibidos para mostrar:', data);
+           
             
             // BÚSQUEDA ESPECÍFICA DEL CAMPO TotalWithDiscountAmountFormatted
             let precio = 0;
@@ -779,9 +779,6 @@
                     numero = numero.replace(/,/g, '.'); // Comas a decimales
                     const valor = parseFloat(numero);
                     if (!isNaN(valor) && valor > 0) {
-                        console.log(`💰 PRECIO REAL encontrado en ${ruta}.TotalWithDiscountAmountFormatted: ${valorFormateado} = ${valor}`);
-                        fuentePrecio = `${ruta}.TotalWithDiscountAmountFormatted`;
-                        return valor;
                     }
                 }
                 
@@ -844,8 +841,6 @@
                     precio = buscarPrecioRecursivo(data.debug.originalResponse, 'originalResponse');
                 }
             }
-            
-            console.log(`🎯 PRECIO FINAL: ${precio} desde ${fuentePrecio}`);
             
             // CALCULAR COSTOS CON PLATAFORMA
             const costoPlataforma = 25000;
@@ -1191,6 +1186,7 @@
     </script>
 </body>
 </html>
+
 
 
 
