@@ -192,6 +192,7 @@
             background: #059669;
         }
 
+        /* Nuevo estilo para el botón de expedición */
         .btn-expedition {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
@@ -362,7 +363,7 @@
             border: 1px solid #a7f3d0;
         }
 
-        /* Action buttons */
+        /* Contenedor de botones de acción */
         .action-buttons {
             display: flex;
             flex-direction: column;
@@ -381,7 +382,59 @@
             }
         }
 
-        /* WhatsApp Button */
+        /* Debug Info - Oculto */
+        .debug-info {
+            display: none !important;
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+            }
+            
+            .header {
+                box-shadow: none;
+                border-bottom: 2px solid #e5e7eb;
+            }
+            
+            .card {
+                box-shadow: none;
+                border: 1px solid #e5e7eb;
+            }
+            
+            .btn {
+                display: none;
+            }
+            
+            #cotizadorForm {
+                display: none;
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 640px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header-content {
+                padding: 0 20px;
+            }
+            
+            .card {
+                padding: 20px;
+            }
+            
+            .logo {
+                font-size: 24px;
+            }
+            
+            .price-highlight {
+                font-size: 28px;
+            }
+        }
+            /*Boton WhatsApp */
         .whatsapp-button {
             position: fixed;
             bottom: 20px;
@@ -423,6 +476,7 @@
             }
         }
 
+        /* Tooltip opcional */
         .whatsapp-button::before {
             content: "¡Escríbenos!";
             position: absolute;
@@ -445,6 +499,7 @@
             visibility: visible;
         }
 
+        /* Flecha del tooltip */
         .whatsapp-button::after {
             content: "";
             position: absolute;
@@ -480,52 +535,6 @@
                 height: 28px;
             }
         }
-
-        @media print {
-            body {
-                background: white;
-            }
-            
-            .header {
-                box-shadow: none;
-                border-bottom: 2px solid #e5e7eb;
-            }
-            
-            .card {
-                box-shadow: none;
-                border: 1px solid #e5e7eb;
-            }
-            
-            .btn {
-                display: none;
-            }
-            
-            #cotizadorForm {
-                display: none;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .container {
-                padding: 10px;
-            }
-            
-            .header-content {
-                padding: 0 20px;
-            }
-            
-            .card {
-                padding: 20px;
-            }
-            
-            .logo {
-                font-size: 24px;
-            }
-            
-            .price-highlight {
-                font-size: 28px;
-            }
-        }
     </style>
 </head>
 <body>
@@ -537,7 +546,7 @@
             </a>
         </div>
     </header>
-
+<!-- WhatsApp -->
     <a href="https://wa.me/573128433999?text=Hola%20Badelco,%20estoy%20interesad@%20en%20obtener%20el%20SOAT" 
        class="whatsapp-button" 
        target="_blank" 
@@ -602,6 +611,8 @@
                         <span class="spinner"></span>
                     </button>
                 </form>
+
+                <div id="debugInfo" class="debug-info"></div>
             </div>
 
             <!-- Resultados de Cotización -->
@@ -631,13 +642,14 @@
                         </div>
                     </div>
 
+                    <!-- Botones de acción mejorados -->
                     <div class="action-buttons">
-                        <button class="btn btn-secondary" id="captureBtn">
+                        <button class="btn btn-secondary" onclick="captureScreen()">
                             <span>📸</span>
                             <span>Capturar Pantalla</span>
                         </button>
                         
-                        <button class="btn btn-expedition" id="expedirBtn">
+                        <button class="btn btn-expedition" onclick="expedirSOAT()">
                             <span>✅</span>
                             <span>Expedir SOAT</span>
                         </button>
@@ -648,21 +660,55 @@
     </div>
 
     <script>
-        // Configuration
+        // Configuration - ACTUALIZADO PARA TU SERVIDOR
         const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
+        const DEBUG = true; // Activamos debug para diagnosticar
         
-        // Request function with fallback strategies
+        // Función para hacer requests con diferentes estrategias
         async function makeRequest(url, options = {}) {
             const strategies = [
+                // Estrategia 1: Request normal
                 () => fetch(url, options),
-                () => fetch(url, { ...options, mode: 'no-cors' })
+                
+                // Estrategia 2: Con mode no-cors (limitado pero funciona)
+                () => fetch(url, { ...options, mode: 'no-cors' }),
+                
+                // Estrategia 3: Usando JSONP-like approach
+                () => new Promise((resolve, reject) => {
+                    // Solo para GET requests
+                    if (options.method && options.method !== 'GET') {
+                        reject(new Error('JSONP solo funciona con GET'));
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    const callbackName = 'callback_' + Date.now();
+                    
+                    window[callbackName] = (data) => {
+                        resolve({ ok: true, json: () => Promise.resolve(data) });
+                        document.head.removeChild(script);
+                        delete window[callbackName];
+                    };
+                    
+                    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callbackName;
+                    script.onerror = () => {
+                        reject(new Error('JSONP request failed'));
+                        document.head.removeChild(script);
+                        delete window[callbackName];
+                    };
+                    
+                    document.head.appendChild(script);
+                })
             ];
             
             for (let i = 0; i < strategies.length; i++) {
                 try {
+                    console.log(`🔄 Intentando estrategia ${i + 1}`);
                     const response = await strategies[i]();
+                    console.log(`✅ Estrategia ${i + 1} exitosa`);
                     return response;
                 } catch (error) {
+                    console.log(`❌ Estrategia ${i + 1} falló:`, error.message);
                     if (i === strategies.length - 1) throw error;
                 }
             }
@@ -676,18 +722,29 @@
             const submitBtn = form.querySelector('button[type="submit"]');
             const spinner = submitBtn.querySelector('.spinner');
             
+            // Clear previous results
             document.getElementById('results').style.display = 'none';
             
+            // Show loading state
             submitBtn.disabled = true;
             spinner.style.display = 'inline-block';
             
+            // Get form data
             const formData = {
                 placa: form.placa.value.toUpperCase(),
                 documentType: form.documentType.value,
                 documentNumber: form.documentNumber.value
             };
             
+            if (DEBUG) {
+                showDebugInfo(`Enviando solicitud a: ${PROXY_URL}/cotizar`, formData);
+            }
+            
             try {
+                console.log('📤 Enviando datos:', formData);
+                console.log('🎯 URL destino:', `${PROXY_URL}/cotizar`);
+                
+                // Usar función de request mejorada
                 const response = await makeRequest(`${PROXY_URL}/cotizar`, {
                     method: 'POST',
                     headers: {
@@ -697,27 +754,49 @@
                     body: JSON.stringify(formData)
                 });
                 
+                console.log('📥 Response recibido:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok
+                });
+                
                 if (!response.ok) {
+                    // Para requests no-cors, no podemos leer el body del error
                     if (response.type === 'opaque') {
-                        showAlert('Solicitud enviada. Verificando respuesta...', 'error');
+                        console.log('⚠️ Respuesta opaca (no-cors mode)');
+                        showAlert('Solicitud enviada. Si no ves resultados, hay un problema de CORS en el servidor.', 'error');
                         return;
                     }
                     
                     const errorText = await response.text();
+                    console.error('❌ Error response body:', errorText);
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 const data = await response.json();
+                console.log('✅ Datos recibidos exitosamente:', data);
+                
+                if (DEBUG) {
+                    showDebugInfo(`Respuesta (${response.status}):`, data);
+                }
+                
                 displayResults(data);
                 showAlert('Cotización realizada exitosamente', 'success');
                 
             } catch (error) {
+                console.error('💥 Error completo:', error);
+                console.error('📋 Detalles:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                
                 let errorMessage = 'Error al procesar la cotización';
                 
                 if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    errorMessage = 'Error de conexión. Verifique su conexión a internet.';
+                    errorMessage = '🚨 Error CORS: El servidor necesita configuración. Contacta al administrador.';
                 } else if (error.message.includes('CORS')) {
-                    errorMessage = 'Error de configuración del servidor';
+                    errorMessage = '🚨 Error CORS: Configuración del servidor incorrecta';
                 } else if (error.message.includes('HTTP')) {
                     errorMessage = `Error del servidor: ${error.message}`;
                 } else {
@@ -725,13 +804,17 @@
                 }
                 
                 showAlert(errorMessage, 'error');
+                
+                if (DEBUG) {
+                    showDebugInfo('Error completo:', error);
+                }
             } finally {
                 submitBtn.disabled = false;
                 spinner.style.display = 'none';
             }
         });
 
-        // Display results
+        // Display results - FUNCIÓN ACTUALIZADA
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
             const priceDisplay = document.getElementById('priceDisplay');
@@ -739,22 +822,31 @@
             const paymentAccounts = document.getElementById('paymentAccounts');
             const paymentInstructions = document.getElementById('paymentInstructions');
             
-            let precio = 0;
+            console.log('📊 Datos recibidos para mostrar:', data);
             
-            function buscarPrecioRecursivo(obj) {
+            // BÚSQUEDA ESPECÍFICA DEL CAMPO TotalWithDiscountAmountFormatted
+            let precio = 0;
+            let fuentePrecio = 'No encontrado';
+            
+            function buscarPrecioRecursivo(obj, ruta = '') {
                 if (!obj || typeof obj !== 'object') return 0;
                 
+                // PRIORIDAD 1: Campo específico TotalWithDiscountAmountFormatted
                 if (obj['TotalWithDiscountAmountFormatted']) {
                     const valorFormateado = obj['TotalWithDiscountAmountFormatted'];
-                    let numero = valorFormateado.replace(/\$/g, '');
-                    numero = numero.replace(/\./g, '');
-                    numero = numero.replace(/,/g, '.');
+                    // Procesar formato "$590.700" (colombiano: punto = miles)
+                    let numero = valorFormateado.replace(/\$/g, ''); // Quitar $
+                    numero = numero.replace(/\./g, ''); // Quitar puntos (miles)
+                    numero = numero.replace(/,/g, '.'); // Comas a decimales
                     const valor = parseFloat(numero);
                     if (!isNaN(valor) && valor > 0) {
+                        console.log(`💰 PRECIO REAL encontrado en ${ruta}.TotalWithDiscountAmountFormatted: ${valorFormateado} = ${valor}`);
+                        fuentePrecio = `${ruta}.TotalWithDiscountAmountFormatted`;
                         return valor;
                     }
                 }
                 
+                // PRIORIDAD 2: Otros campos formateados similares
                 const camposFormateados = [
                     'TotalAmountFormatted', 'PriceFormatted', 'PremiumFormatted', 'ValueFormatted'
                 ];
@@ -767,11 +859,14 @@
                         numero = numero.replace(/,/g, '.');
                         const valor = parseFloat(numero);
                         if (!isNaN(valor) && valor > 0) {
+                            console.log(`💰 Precio formateado encontrado en ${ruta}.${campo}: ${valorFormateado} = ${valor}`);
+                            fuentePrecio = `${ruta}.${campo}`;
                             return valor;
                         }
                     }
                 }
                 
+                // PRIORIDAD 3: Campos numéricos
                 const camposNumericos = [
                     'TotalWithDiscountAmount', 'TotalAmount', 'Premium', 'Price', 'Value',
                     'precio', 'valor', 'prima', 'total', 'costo', 'tarifa'
@@ -781,14 +876,18 @@
                     if (obj[campo] !== undefined && obj[campo] !== null) {
                         const valor = parseFloat(obj[campo]);
                         if (!isNaN(valor) && valor > 0) {
+                            console.log(`💰 Precio numérico encontrado en ${ruta}.${campo}: ${valor}`);
+                            fuentePrecio = `${ruta}.${campo}`;
                             return valor;
                         }
                     }
                 }
                 
+                // Buscar en objetos anidados
                 for (const [key, value] of Object.entries(obj)) {
                     if (typeof value === 'object' && value !== null) {
-                        const resultado = buscarPrecioRecursivo(value);
+                        const nuevaRuta = ruta ? `${ruta}.${key}` : key;
+                        const resultado = buscarPrecioRecursivo(value, nuevaRuta);
                         if (resultado > 0) return resultado;
                     }
                 }
@@ -796,18 +895,24 @@
                 return 0;
             }
             
+            // Buscar precio en toda la respuesta
             if (data.precio && data.precio > 0) {
                 precio = data.precio;
+                fuentePrecio = 'data.precio';
             } else {
-                precio = buscarPrecioRecursivo(data);
+                precio = buscarPrecioRecursivo(data, 'data');
                 if (precio === 0 && data.debug && data.debug.originalResponse) {
-                    precio = buscarPrecioRecursivo(data.debug.originalResponse);
+                    precio = buscarPrecioRecursivo(data.debug.originalResponse, 'originalResponse');
                 }
             }
             
+            console.log(`🎯 PRECIO FINAL: ${precio} desde ${fuentePrecio}`);
+            
+            // CALCULAR COSTOS CON PLATAFORMA
             const costoPlataforma = 25000;
             const totalConPlataforma = precio + costoPlataforma;
             
+            // Mostrar total en el display principal
             const formattedPrice = new Intl.NumberFormat('es-CO', {
                 style: 'currency',
                 currency: 'COP',
@@ -816,6 +921,7 @@
             
             priceDisplay.textContent = formattedPrice;
             
+            // Extraer información del vehículo
             let vehicleInfo = {
                 tipo: data.tipoVehiculo || 'AUTOMOVIL',
                 marca: data.marca || 'N/A',
@@ -846,6 +952,7 @@
                 };
             }
             
+            // Build result details CON COSTOS DESGLOSADOS
             const details = [
                 { label: 'Placa', value: data.placa },
                 { label: 'Tipo de Vehículo', value: vehicleInfo.tipo },
@@ -890,6 +997,7 @@
                 </div>
             `).join('');
             
+            // Display payment accounts
             if (data.cuentasBancarias) {
                 paymentAccounts.innerHTML = data.cuentasBancarias.map(cuenta => `
                     <div class="account-info">
@@ -901,6 +1009,7 @@
                 `).join('');
             }
             
+            // Display payment instructions
             if (data.instruccionesPago) {
                 paymentInstructions.innerHTML = data.instruccionesPago.map(instruccion => `
                     <li>${instruccion}</li>
@@ -926,6 +1035,15 @@
             }, 5000);
         }
 
+        // Show debug info
+        function showDebugInfo(label, data) {
+            if (!DEBUG) return;
+            
+            console.log(`🔍 ${label}`);
+            console.log(data);
+            console.log(`Timestamp: ${new Date().toISOString()}`);
+        }
+
         // Format date
         function formatDate(date) {
             if (typeof date === 'string') {
@@ -945,15 +1063,17 @@
             return newDate;
         }
 
-        // Screen capture function
+        // FUNCIÓN MEJORADA DE CAPTURA DE PANTALLA
         async function captureScreen() {
             const captureButton = document.querySelector('[onclick="captureScreen()"]');
             const originalContent = captureButton.innerHTML;
             
             try {
+                // Cambiar estado del botón
                 captureButton.innerHTML = '<span>⏳</span> <span>Capturando...</span>';
                 captureButton.disabled = true;
                 
+                // Método 1: Usar html2canvas si está disponible (más confiable)
                 if (typeof html2canvas !== 'undefined') {
                     const canvas = await html2canvas(document.body, {
                         useCORS: true,
@@ -973,6 +1093,7 @@
                     return;
                 }
                 
+                // Método 2: Screen Capture API (navegadores modernos)
                 if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
                     const stream = await navigator.mediaDevices.getDisplayMedia({ 
                         video: { 
@@ -998,25 +1119,29 @@
                             showAlert('Captura de pantalla guardada exitosamente', 'success');
                         }, 'image/png', 1.0);
                         
+                        // Detener el stream
                         stream.getTracks().forEach(track => track.stop());
                     };
                     
                     return;
                 }
                 
+                // Método 3: Fallback - Imprimir
                 showAlert('Abriendo diálogo de impresión como alternativa', 'success');
                 window.print();
                 
             } catch (error) {
+                console.error('Error capturando pantalla:', error);
                 showAlert('No se pudo capturar la pantalla. Usando impresión como alternativa.', 'error');
                 window.print();
             } finally {
+                // Restaurar botón
                 captureButton.innerHTML = originalContent;
                 captureButton.disabled = false;
             }
         }
 
-        // Download image helper
+        // Función auxiliar para descargar imagen
         function downloadImage(blob, filename) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1028,8 +1153,9 @@
             URL.revokeObjectURL(url);
         }
 
-        // Expedite SOAT function
+        // NUEVA FUNCIÓN PARA EXPEDIR SOAT
         function expedirSOAT() {
+            // Obtener datos de la cotización actual
             const placa = document.getElementById('placa').value;
             const documentType = document.getElementById('documentType').value;
             const documentNumber = document.getElementById('documentNumber').value;
@@ -1039,6 +1165,7 @@
                 return;
             }
             
+            // Construir parámetros para la página de expedición
             const params = new URLSearchParams({
                 placa: placa,
                 documentType: documentType,
@@ -1046,32 +1173,32 @@
                 timestamp: new Date().getTime()
             });
             
-            const expedicionURL = `https://badelco.co/expedir-soat/?${params.toString()}`;
+            // AQUÍ PUEDES CAMBIAR LA URL DE DESTINO
+            const expedicionURL = `expedicion.html?${params.toString()}`;
+            
+            // Abrir en nueva ventana/pestaña
             window.open(expedicionURL, '_blank');
+            
+            // Alternativamente, para redireccionar en la misma ventana:
+            // window.location.href = expedicionURL;
+            
             showAlert('Redirigiendo a la página de expedición...', 'success');
         }
 
-        // Format plate input
+        // Format input
         document.getElementById('placa').addEventListener('input', function(e) {
             e.target.value = e.target.value.toUpperCase();
         });
         
-        // Event listeners
-        document.addEventListener('DOMContentLoaded', function() {
-            const captureBtn = document.getElementById('captureBtn');
-            if (captureBtn) {
-                captureBtn.addEventListener('click', captureScreen);
-            }
-            
-            const expedirBtn = document.getElementById('expedirBtn');
-            if (expedirBtn) {
-                expedirBtn.addEventListener('click', expedirSOAT);
-            }
-        });
-        
         // Check server status on load
         window.addEventListener('load', async () => {
+            console.log('🚀 Iniciando diagnóstico de conexión...');
+            
+            // Test 1: Verificar conectividad básica con múltiples estrategias
             try {
+                console.log('📡 Probando endpoint /info...');
+                
+                // Primero intentar request normal
                 const response = await makeRequest(`${PROXY_URL}/info`, {
                     method: 'GET',
                     headers: {
@@ -1079,24 +1206,51 @@
                     }
                 });
                 
+                console.log('📊 Response status:', response.status);
+                
                 if (response.ok) {
                     try {
                         const data = await response.json();
-                        showAlert('Bienvenido a Badelco SOAT', 'success');
+                        console.log('✅ Servidor conectado:', data);
+                        showAlert('Servidor conectado correctamente', 'success');
                     } catch (jsonError) {
-                        showAlert('Servidor responde correctamente', 'success');
+                        console.log('⚠️ Respuesta recibida pero no es JSON válido');
+                        showAlert('Servidor responde pero formato incorrecto', 'error');
                     }
                 } else if (response.type === 'opaque') {
-                    showAlert('Sistema listo para cotizaciones', 'success');
+                    console.log('⚠️ Respuesta opaca - posible problema CORS');
+                    showAlert('⚠️ Conexión establecida pero bloqueada por CORS', 'error');
+                } else {
+                    console.error('❌ Error de respuesta:', response.status, response.statusText);
+                    showAlert(`Error del servidor: ${response.status} ${response.statusText}`, 'error');
                 }
             } catch (error) {
-                // Silent error handling for production
+                console.error('⚠️ Error de conexión:', error);
+                console.error('📋 Detalles del error:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                
+                if (error.message.includes('CORS') || error.message.includes('fetch')) {
+                    showAlert('🚨 ERROR CORS: El servidor necesita configuración actualizada', 'error');
+                } else {
+                    showAlert(`Error de conexión: ${error.message}`, 'error');
+                }
+            }
+            
+            // Test adicional: Verificar si la página está servida desde HTTPS
+            if (location.protocol === 'https:') {
+                console.log('✅ Página servida via HTTPS');
+            } else {
+                console.log('⚠️ Página servida via HTTP - puede causar problemas');
             }
         });
         
-        // Load html2canvas for better screen capture
+        // Cargar html2canvas dinámicamente para mejor captura de pantalla
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        script.onload = () => console.log('📸 html2canvas cargado para mejores capturas');
         document.head.appendChild(script);
     </script>
 </body>
