@@ -54,12 +54,17 @@ app.use(cors({
         'https://badelco-soat-api-production.up.railway.app',
         'http://localhost:3000',
         'http://localhost:5500',
-        'http://localhost:5501'
+        'http://localhost:5501',
+        'https://claude.ai',      // Para pruebas
+        '*'                       // Permitir todos temporalmente
     ], 
-    credentials: true 
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin']
 }));
-app.use(express.json());
-app.use(express.static('public'));
+
+// Agregar después de la configuración CORS:
+app.options('*', cors());
 
 
 // Credenciales correctas del API
@@ -575,4 +580,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Modo: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔑 Token configurado: ${AUTH_TOKEN.substring(0, 30)}***`);
     console.log('🚀 ================================\n');
+
 });
