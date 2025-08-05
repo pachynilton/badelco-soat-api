@@ -644,12 +644,12 @@
 
                     <!-- Botones de acción mejorados -->
                     <div class="action-buttons">
-                        <button class="btn btn-secondary" onclick="captureScreen()">
+                        <button class="btn btn-secondary" id="captureBtn">
                             <span>📸</span>
                             <span>Capturar Pantalla</span>
                         </button>
                         
-                        <button class="btn btn-expedition" onclick="expedirSOAT()">
+                        <button class="btn btn-expedition" id="expedirBtn">
                             <span>✅</span>
                             <span>Expedir SOAT</span>
                         </button>
@@ -660,9 +660,29 @@
     </div>
 
     <script>
-        // Configuration - ACTUALIZADO CON TU URL DE RAILWAY
+        // Configuration - VERSIÓN PRODUCCIÓN
         const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
-        const DEBUG = false;
+        const DEBUG = false; // Desactivado para producción
+        
+        // Función para hacer requests con diferentes estrategias
+        async function makeRequest(url, options = {}) {
+            const strategies = [
+                // Estrategia 1: Request normal
+                () => fetch(url, options),
+                
+                // Estrategia 2: Con mode no-cors (limitado pero funciona)
+                () => fetch(url, { ...options, mode: 'no-cors' })
+            ];
+            
+            for (let i = 0; i < strategies.length; i++) {
+                try {
+                    const response = await strategies[i]();
+                    return response;
+                } catch (error) {
+                    if (i === strategies.length - 1) throw error;
+                }
+            }
+        }
 
         // Form handling
         document.getElementById('cotizadorForm').addEventListener('submit', async (e) => {
@@ -691,34 +711,42 @@
             }
             
             try {
-                const response = await fetch(`${PROXY_URL}/cotizar`, {
+                const response = await makeRequest(`${PROXY_URL}/cotizar`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
                     body: JSON.stringify(formData)
                 });
                 
-                const data = await response.json();
-                
-                if (DEBUG) {
-                    showDebugInfo(`Respuesta (${response.status}):`, data);
-                }
-                
                 if (!response.ok) {
-                    throw new Error(data.message || 'Error al cotizar');
+                    if (response.type === 'opaque') {
+                        showAlert('Solicitud enviada. Si no ves resultados, hay un problema de conectividad.', 'error');
+                        return;
+                    }
+                    
+                    const errorText = await response.text();
+                    throw new Error(`Error del servidor: ${response.status}`);
                 }
+                
+                const data = await response.json();
                 
                 displayResults(data);
                 showAlert('Cotización realizada exitosamente', 'success');
                 
             } catch (error) {
-                console.error('Error:', error);
-                showAlert(error.message || 'Error al procesar la cotización. Verifica tu conexión e intenta nuevamente.', 'error');
+                let errorMessage = 'Error al procesar la cotización';
                 
-                if (DEBUG) {
-                    showDebugInfo('Error completo:', error);
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    errorMessage = 'Error de conexión. Por favor intenta nuevamente.';
+                } else if (error.message.includes('CORS')) {
+                    errorMessage = 'Error de conectividad. Contacta al administrador.';
+                } else if (error.message.includes('HTTP')) {
+                    errorMessage = 'Error del servidor. Intenta más tarde.';
                 }
+                
+                showAlert(errorMessage, 'error');
             } finally {
                 submitBtn.disabled = false;
                 spinner.style.display = 'none';
@@ -974,9 +1002,9 @@
             return newDate;
         }
 
-        // FUNCIÓN MEJORADA DE CAPTURA DE PANTALLA
+        // FUNCIÓN MEJORADA DE CAPTURA DE PANTALLA (SIN html2canvas)
         async function captureScreen() {
-            const captureButton = document.querySelector('[onclick="captureScreen()"]');
+            const captureButton = document.getElementById('captureBtn');
             const originalContent = captureButton.innerHTML;
             
             try {
@@ -984,28 +1012,10 @@
                 captureButton.innerHTML = '<span>⏳</span> <span>Capturando...</span>';
                 captureButton.disabled = true;
                 
-                // Método 1: Usar html2canvas si está disponible (más confiable)
-                if (typeof html2canvas !== 'undefined') {
-                    const canvas = await html2canvas(document.body, {
-                        useCORS: true,
-                        allowTaint: true,
-                        scale: 2,
-                        scrollX: 0,
-                        scrollY: 0,
-                        width: window.innerWidth,
-                        height: document.body.scrollHeight
-                    });
-                    
-                    canvas.toBlob(blob => {
-                        downloadImage(blob, 'cotizacion-soat');
-                    }, 'image/png', 1.0);
-                    
-                    showAlert('Captura de pantalla guardada exitosamente', 'success');
-                    return;
-                }
-                
-                // Método 2: Screen Capture API (navegadores modernos)
+                // Método 1: Screen Capture API (navegadores modernos)
                 if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+                    console.log('📸 Usando Screen Capture API');
+                    
                     const stream = await navigator.mediaDevices.getDisplayMedia({ 
                         video: { 
                             mediaSource: 'screen',
@@ -1037,14 +1047,77 @@
                     return;
                 }
                 
+                // Método 2: Crear canvas manual de los resultados
+                console.log('📸 Creando imagen de resultados');
+                const resultsCard = document.querySelector('.results').parentElement;
+                
+                // Crear canvas personalizado con los datos importantes
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 1000;
+                const ctx = canvas.getContext('2d');
+                
+                // Fondo blanco
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Header
+                ctx.fillStyle = '#e25532';
+                ctx.fillRect(0, 0, canvas.width, 100);
+                
+                // Título
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 32px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Badelco SOAT - Cotización', canvas.width/2, 60);
+                
+                // Contenido
+                ctx.fillStyle = '#272626';
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'left';
+                
+                let y = 150;
+                const lineHeight = 40;
+                
+                // Obtener datos actuales
+                const placa = document.getElementById('placa').value;
+                const precio = document.getElementById('priceDisplay').textContent;
+                
+                const info = [
+                    `Placa: ${placa}`,
+                    `Precio: ${precio}`,
+                    `Fecha: ${new Date().toLocaleDateString('es-CO')}`,
+                    '',
+                    'Información de Pago:',
+                    'Bancolombia: 30685175725',
+                    'Nequi: 3128433999',
+                    '',
+                    'WhatsApp: 3128433999'
+                ];
+                
+                info.forEach(line => {
+                    if (line.startsWith('Información de Pago:')) {
+                        ctx.font = 'bold 24px Arial';
+                    } else {
+                        ctx.font = '20px Arial';
+                    }
+                    ctx.fillText(line, 50, y);
+                    y += lineHeight;
+                });
+                
+                // Descargar imagen
+                canvas.toBlob(blob => {
+                    downloadImage(blob, 'cotizacion-soat');
+                    showAlert('Imagen de cotización creada exitosamente', 'success');
+                }, 'image/png', 1.0);
+                
+            } catch (error) {
+                console.error('Error capturando pantalla:', error);
+                
                 // Método 3: Fallback - Imprimir
                 showAlert('Abriendo diálogo de impresión como alternativa', 'success');
                 window.print();
                 
-            } catch (error) {
-                console.error('Error capturando pantalla:', error);
-                showAlert('No se pudo capturar la pantalla. Usando impresión como alternativa.', 'error');
-                window.print();
             } finally {
                 // Restaurar botón
                 captureButton.innerHTML = originalContent;
@@ -1101,23 +1174,77 @@
             e.target.value = e.target.value.toUpperCase();
         });
         
-        // Check server status on load
-        window.addEventListener('load', async () => {
-            try {
-                const response = await fetch(`${PROXY_URL}/info`);
-                const data = await response.json();
-                console.log('🚀 Servidor conectado:', data);
-            } catch (error) {
-                console.error('⚠️ No se pudo conectar al servidor:', error);
-                showAlert('No se pudo conectar al servidor. Verifica que esté en ejecución.', 'error');
+        // Event listeners para botones (sin onclick inline)
+        document.addEventListener('DOMContentLoaded', function() {
+            // Botón capturar pantalla
+            const captureBtn = document.getElementById('captureBtn');
+            if (captureBtn) {
+                captureBtn.addEventListener('click', captureScreen);
+            }
+            
+            // Botón expedir SOAT
+            const expedirBtn = document.getElementById('expedirBtn');
+            if (expedirBtn) {
+                expedirBtn.addEventListener('click', expedirSOAT);
             }
         });
         
-        // Cargar html2canvas dinámicamente para mejor captura de pantalla
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        script.onload = () => console.log('📸 html2canvas cargado para mejores capturas');
-        document.head.appendChild(script);
+        // Check server status on load
+        window.addEventListener('load', async () => {
+            console.log('🚀 Iniciando diagnóstico de conexión...');
+            
+            // Test 1: Verificar conectividad básica con múltiples estrategias
+            try {
+                console.log('📡 Probando endpoint /info...');
+                
+                // Primero intentar request normal
+                const response = await makeRequest(`${PROXY_URL}/info`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                console.log('📊 Response status:', response.status);
+                
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        console.log('✅ Servidor conectado:', data);
+                        showAlert('Servidor conectado correctamente', 'success');
+                    } catch (jsonError) {
+                        console.log('⚠️ Respuesta recibida pero no es JSON válido');
+                        showAlert('Servidor responde pero formato incorrecto', 'error');
+                    }
+                } else if (response.type === 'opaque') {
+                    console.log('⚠️ Respuesta opaca - posible problema CORS');
+                    showAlert('⚠️ Conexión establecida pero bloqueada por CORS', 'error');
+                } else {
+                    console.error('❌ Error de respuesta:', response.status, response.statusText);
+                    showAlert(`Error del servidor: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                console.error('⚠️ Error de conexión:', error);
+                console.error('📋 Detalles del error:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                
+                if (error.message.includes('CORS') || error.message.includes('fetch')) {
+                    showAlert('🚨 ERROR CORS: El servidor necesita configuración actualizada', 'error');
+                } else {
+                    showAlert(`Error de conexión: ${error.message}`, 'error');
+                }
+            }
+            
+            // Test adicional: Verificar si la página está servida desde HTTPS
+            if (location.protocol === 'https:') {
+                console.log('✅ Página servida via HTTPS');
+            } else {
+                console.log('⚠️ Página servida via HTTP - puede causar problemas');
+            }
+        });
     </script>
 </body>
 </html>
