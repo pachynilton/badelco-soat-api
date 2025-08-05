@@ -1158,7 +1158,7 @@
             });
             
             // AQUÍ PUEDES CAMBIAR LA URL DE DESTINO
-            const expedicionURL = `expedicion.html?${params.toString()}`;
+            const expedicionURL = `https://badelco.co/expedir-soat/?${params.toString()}`;
             
             // Abrir en nueva ventana/pestaña
             window.open(expedicionURL, '_blank');
@@ -1211,7 +1211,7 @@
                     try {
                         const data = await response.json();
                         console.log('✅ Servidor conectado:', data);
-                        showAlert('Servidor conectado correctamente', 'success');
+                        showAlert('Bienvenido a Badelco SOAT', 'success');
                     } catch (jsonError) {
                         console.log('⚠️ Respuesta recibida pero no es JSON válido');
                         showAlert('Servidor responde pero formato incorrecto', 'error');
@@ -1248,3 +1248,4 @@
     </script>
 </body>
 </html>
+
