@@ -420,6 +420,5 @@ app.get('/', (req, res) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-    // Solo un mensaje simple para confirmar que el servidor está corriendo
-    console.log(`Badelco SOAT API running on port ${PORT}`);
+    // Silent start for production
 });
