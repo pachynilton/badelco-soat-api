@@ -812,9 +812,6 @@
                     if (obj[campo] !== undefined && obj[campo] !== null) {
                         const valor = parseFloat(obj[campo]);
                         if (!isNaN(valor) && valor > 0) {
-                            console.log(`💰 Precio numérico encontrado en ${ruta}.${campo}: ${valor}`);
-                            fuentePrecio = `${ruta}.${campo}`;
-                            return valor;
                         }
                     }
                 }
@@ -1186,6 +1183,7 @@
     </script>
 </body>
 </html>
+
 
 
 
