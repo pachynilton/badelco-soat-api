@@ -1188,64 +1188,8 @@
                 expedirBtn.addEventListener('click', expedirSOAT);
             }
         });
-        
-        // Check server status on load
-        window.addEventListener('load', async () => {
-            console.log('🚀 Iniciando diagnóstico de conexión...');
-            
-            // Test 1: Verificar conectividad básica con múltiples estrategias
-            try {
-                console.log('📡 Probando endpoint /info...');
-                
-                // Primero intentar request normal
-                const response = await makeRequest(`${PROXY_URL}/info`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
-                
-                console.log('📊 Response status:', response.status);
-                
-                if (response.ok) {
-                    try {
-                        const data = await response.json();
-                        console.log('✅ Servidor conectado:', data);
-                        showAlert('Bienvenido a Badelco SOAT', 'success');
-                    } catch (jsonError) {
-                        console.log('⚠️ Respuesta recibida pero no es JSON válido');
-                        showAlert('Servidor responde pero formato incorrecto', 'error');
-                    }
-                } else if (response.type === 'opaque') {
-                    console.log('⚠️ Respuesta opaca - posible problema CORS');
-                    showAlert('⚠️ Conexión establecida pero bloqueada por CORS', 'error');
-                } else {
-                    console.error('❌ Error de respuesta:', response.status, response.statusText);
-                    showAlert(`Error del servidor: ${response.status} ${response.statusText}`, 'error');
-                }
-            } catch (error) {
-                console.error('⚠️ Error de conexión:', error);
-                console.error('📋 Detalles del error:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
-                
-                if (error.message.includes('CORS') || error.message.includes('fetch')) {
-                    showAlert('🚨 ERROR CORS: El servidor necesita configuración actualizada', 'error');
-                } else {
-                    showAlert(`Error de conexión: ${error.message}`, 'error');
-                }
-            }
-            
-            // Test adicional: Verificar si la página está servida desde HTTPS
-            if (location.protocol === 'https:') {
-                console.log('✅ Página servida via HTTPS');
-            } else {
-                console.log('⚠️ Página servida via HTTP - puede causar problemas');
-            }
-        });
     </script>
 </body>
 </html>
+
 
