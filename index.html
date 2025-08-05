@@ -660,59 +660,9 @@
     </div>
 
     <script>
-        // Configuration - ACTUALIZADO PARA TU SERVIDOR
+        // Configuration - ACTUALIZADO CON TU URL DE RAILWAY
         const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
-        const DEBUG = true; // Activamos debug para diagnosticar
-        
-        // Función para hacer requests con diferentes estrategias
-        async function makeRequest(url, options = {}) {
-            const strategies = [
-                // Estrategia 1: Request normal
-                () => fetch(url, options),
-                
-                // Estrategia 2: Con mode no-cors (limitado pero funciona)
-                () => fetch(url, { ...options, mode: 'no-cors' }),
-                
-                // Estrategia 3: Usando JSONP-like approach
-                () => new Promise((resolve, reject) => {
-                    // Solo para GET requests
-                    if (options.method && options.method !== 'GET') {
-                        reject(new Error('JSONP solo funciona con GET'));
-                        return;
-                    }
-                    
-                    const script = document.createElement('script');
-                    const callbackName = 'callback_' + Date.now();
-                    
-                    window[callbackName] = (data) => {
-                        resolve({ ok: true, json: () => Promise.resolve(data) });
-                        document.head.removeChild(script);
-                        delete window[callbackName];
-                    };
-                    
-                    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callbackName;
-                    script.onerror = () => {
-                        reject(new Error('JSONP request failed'));
-                        document.head.removeChild(script);
-                        delete window[callbackName];
-                    };
-                    
-                    document.head.appendChild(script);
-                })
-            ];
-            
-            for (let i = 0; i < strategies.length; i++) {
-                try {
-                    console.log(`🔄 Intentando estrategia ${i + 1}`);
-                    const response = await strategies[i]();
-                    console.log(`✅ Estrategia ${i + 1} exitosa`);
-                    return response;
-                } catch (error) {
-                    console.log(`❌ Estrategia ${i + 1} falló:`, error.message);
-                    if (i === strategies.length - 1) throw error;
-                }
-            }
-        }
+        const DEBUG = false;
 
         // Form handling
         document.getElementById('cotizadorForm').addEventListener('submit', async (e) => {
@@ -741,69 +691,30 @@
             }
             
             try {
-                console.log('📤 Enviando datos:', formData);
-                console.log('🎯 URL destino:', `${PROXY_URL}/cotizar`);
-                
-                // Usar función de request mejorada
-                const response = await makeRequest(`${PROXY_URL}/cotizar`, {
+                const response = await fetch(`${PROXY_URL}/cotizar`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(formData)
                 });
                 
-                console.log('📥 Response recibido:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    ok: response.ok
-                });
-                
-                if (!response.ok) {
-                    // Para requests no-cors, no podemos leer el body del error
-                    if (response.type === 'opaque') {
-                        console.log('⚠️ Respuesta opaca (no-cors mode)');
-                        showAlert('Solicitud enviada. Si no ves resultados, hay un problema de CORS en el servidor.', 'error');
-                        return;
-                    }
-                    
-                    const errorText = await response.text();
-                    console.error('❌ Error response body:', errorText);
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
                 const data = await response.json();
-                console.log('✅ Datos recibidos exitosamente:', data);
                 
                 if (DEBUG) {
                     showDebugInfo(`Respuesta (${response.status}):`, data);
+                }
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Error al cotizar');
                 }
                 
                 displayResults(data);
                 showAlert('Cotización realizada exitosamente', 'success');
                 
             } catch (error) {
-                console.error('💥 Error completo:', error);
-                console.error('📋 Detalles:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
-                
-                let errorMessage = 'Error al procesar la cotización';
-                
-                if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    errorMessage = '🚨 Error CORS: El servidor necesita configuración. Contacta al administrador.';
-                } else if (error.message.includes('CORS')) {
-                    errorMessage = '🚨 Error CORS: Configuración del servidor incorrecta';
-                } else if (error.message.includes('HTTP')) {
-                    errorMessage = `Error del servidor: ${error.message}`;
-                } else {
-                    errorMessage = `Error: ${error.message}`;
-                }
-                
-                showAlert(errorMessage, 'error');
+                console.error('Error:', error);
+                showAlert(error.message || 'Error al procesar la cotización. Verifica tu conexión e intenta nuevamente.', 'error');
                 
                 if (DEBUG) {
                     showDebugInfo('Error completo:', error);
@@ -1192,58 +1103,13 @@
         
         // Check server status on load
         window.addEventListener('load', async () => {
-            console.log('🚀 Iniciando diagnóstico de conexión...');
-            
-            // Test 1: Verificar conectividad básica con múltiples estrategias
             try {
-                console.log('📡 Probando endpoint /info...');
-                
-                // Primero intentar request normal
-                const response = await makeRequest(`${PROXY_URL}/info`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
-                
-                console.log('📊 Response status:', response.status);
-                
-                if (response.ok) {
-                    try {
-                        const data = await response.json();
-                        console.log('✅ Servidor conectado:', data);
-                        showAlert('Servidor conectado correctamente', 'success');
-                    } catch (jsonError) {
-                        console.log('⚠️ Respuesta recibida pero no es JSON válido');
-                        showAlert('Servidor responde pero formato incorrecto', 'error');
-                    }
-                } else if (response.type === 'opaque') {
-                    console.log('⚠️ Respuesta opaca - posible problema CORS');
-                    showAlert('⚠️ Conexión establecida pero bloqueada por CORS', 'error');
-                } else {
-                    console.error('❌ Error de respuesta:', response.status, response.statusText);
-                    showAlert(`Error del servidor: ${response.status} ${response.statusText}`, 'error');
-                }
+                const response = await fetch(`${PROXY_URL}/info`);
+                const data = await response.json();
+                console.log('🚀 Servidor conectado:', data);
             } catch (error) {
-                console.error('⚠️ Error de conexión:', error);
-                console.error('📋 Detalles del error:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
-                
-                if (error.message.includes('CORS') || error.message.includes('fetch')) {
-                    showAlert('🚨 ERROR CORS: El servidor necesita configuración actualizada', 'error');
-                } else {
-                    showAlert(`Error de conexión: ${error.message}`, 'error');
-                }
-            }
-            
-            // Test adicional: Verificar si la página está servida desde HTTPS
-            if (location.protocol === 'https:') {
-                console.log('✅ Página servida via HTTPS');
-            } else {
-                console.log('⚠️ Página servida via HTTP - puede causar problemas');
+                console.error('⚠️ No se pudo conectar al servidor:', error);
+                showAlert('No se pudo conectar al servidor. Verifica que esté en ejecución.', 'error');
             }
         });
         
