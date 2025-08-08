@@ -660,28 +660,41 @@
     </div>
 
     <script>
-        // Configuration - VERSIÓN PRODUCCIÓN
-        const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
-        const DEBUG = false; // Desactivado para producción
-        
-        // Función para hacer requests con diferentes estrategias
-        async function makeRequest(url, options = {}) {
-            const strategies = [
-                // Estrategia 1: Request normal
-                () => fetch(url, options),
-                
-                // Estrategia 2: Con mode no-cors (limitado pero funciona)
-                () => fetch(url, { ...options, mode: 'no-cors' })
-            ];
-            
-            for (let i = 0; i < strategies.length; i++) {
-                try {
-                    const response = await strategies[i]();
-                    return response;
-                } catch (error) {
-                    if (i === strategies.length - 1) throw error;
-                }
+       // Configuration - VERSIÓN CORREGIDA
+const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
+const DEBUG = true; // Activar para ver errores
+
+// Función mejorada para hacer requests
+async function makeRequest(url, options = {}) {
+    console.log('🚀 Haciendo request a:', url);
+    console.log('📝 Opciones:', options);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                ...options.headers
             }
+        });
+        
+        console.log('📊 Response status:', response.status);
+        console.log('📊 Response ok:', response.ok);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Error response:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        return response;
+        
+    } catch (error) {
+        console.error('❌ Request failed:', error);
+        throw error;
+    }
+}
         }
 
         // Form handling
@@ -1185,6 +1198,7 @@
     </script>
 </body>
 </html>
+
 
 
 
