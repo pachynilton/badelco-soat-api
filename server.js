@@ -562,6 +562,29 @@ app.get('/api/info', (req, res) => {
     });
 });
 
+// Ruta GET para compatibilidad con frontend
+app.get('/api/soat', async (req, res) => {
+    try {
+        const token = await getValidToken();
+        
+        const response = await axios.get(`${API_BASE_URL}/soat`, {
+            headers: {
+                'Auth-Token': token,
+                'Content-Type': 'application/json'
+            },
+            params: req.query,
+            timeout: 15000
+        });
+        
+        res.json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json({
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
 // Página principal
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
@@ -576,4 +599,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔑 Token configurado: ${AUTH_TOKEN.substring(0, 30)}***`);
     console.log('🚀 ================================\n');
 });
+
 
