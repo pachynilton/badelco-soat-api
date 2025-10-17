@@ -65,8 +65,8 @@ app.use(express.static('public'));
 // Credenciales correctas del API
 const API_BASE_URL = 'https://pagoalafija.co/api/public/';
 const API_KEY = '4aeaa7cc5f23610d9a1b3bb303389262';
-const SECRET_KEY = '$2y$10$XzpKuT6bKjS79yFin/yGx.DfSetyDXPds2LrNBpnDNljqmZll7GLe';
-const AUTH_TOKEN = 'f575bd8fc63df8e07c5ec3a5dea17026a978f51614838041a14c408f4a3a678c';
+const SECRET_KEY = '$2y$10$eYX8JTjeVoiHU0Bb2/k8weXnj9oabIPAhD3rYA5qlbImtb1lD4T/a';
+const AUTH_TOKEN = '55a9d4ce4c878c2cddfdedf46de4414bbd08e3cf8aa7699de486c4c622f0cf3e';
 const COD_PRODUCTO = 63;
 
 // Variables para el token dinámico
@@ -599,6 +599,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔑 Token configurado: ${AUTH_TOKEN.substring(0, 30)}***`);
     console.log('🚀 ================================\n');
 });
+
 
 
 
