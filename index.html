@@ -893,6 +893,8 @@ async function makeRequest(url, options = {}) {
                     marca: apiData.BrandName || vehicleInfo.marca,
                     modelo: apiData.VehicleLineDescription || vehicleInfo.modelo,
                     cilindraje: apiData.CylinderCapacity || vehicleInfo.cilindraje,
+                    chasis: apiData.ChasisNumber || vehicleInfo.chasis,
+                    motor: apiData.MotorNumber || vehicleInfo.motor,
                     año: apiData.VehicleYear || vehicleInfo.año
                 };
             }
@@ -904,6 +906,8 @@ async function makeRequest(url, options = {}) {
                 { label: 'Marca', value: vehicleInfo.marca },
                 { label: 'Modelo', value: vehicleInfo.modelo },
                 { label: 'Cilindraje', value: vehicleInfo.cilindraje },
+                { label: 'Chasis', value: vehicleInfo.chasis },
+                { label: 'Motor', value: vehicleInfo.motor },
                 { label: 'Año', value: vehicleInfo.año },
                 { label: 'Vigencia', value: '1 año' },
                 { label: 'Inicio de Vigencia', value: formatDate(data.inicioVigencia || new Date()) },
@@ -1197,6 +1201,7 @@ async function makeRequest(url, options = {}) {
     </script>
 </body>
 </html>
+
 
 
 
