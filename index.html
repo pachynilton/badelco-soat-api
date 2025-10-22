@@ -627,7 +627,7 @@
                     
                     <div id="resultDetails"></div>
 
-                    <div class="payment-info">
+                     <!--<div class="payment-info">
                         <h3 class="payment-title">
                             <span>🏦</span>
                             Información de Pago
@@ -640,7 +640,7 @@
                             <ol id="paymentInstructions" style="margin: 0; padding-left: 20px; font-size: 14px; color: #92400e;">
                             </ol>
                         </div>
-                    </div>
+                    </div>-->
 
                     <!-- Botones de acción mejorados -->
                     <div class="action-buttons">
@@ -943,23 +943,23 @@ async function makeRequest(url, options = {}) {
             `).join('');
             
             // Display payment accounts
-            if (data.cuentasBancarias) {
-                paymentAccounts.innerHTML = data.cuentasBancarias.map(cuenta => `
-                    <div class="account-info">
-                        <div class="account-bank">${cuenta.banco}</div>
-                        <div class="account-number">${cuenta.numero}</div>
-                        <div class="account-type">${cuenta.tipo}</div>
-                        ${cuenta.titular ? `<div class="account-type">Titular: ${cuenta.titular}</div>` : ''}
-                    </div>
-                `).join('');
-            }
+           // if (data.cuentasBancarias) {
+             //   paymentAccounts.innerHTML = data.cuentasBancarias.map(cuenta => `
+                  //  <div class="account-info">
+                      //  <div class="account-bank">${cuenta.banco}</div>
+                     //   <div class="account-number">${cuenta.numero}</div>
+                     //   <div class="account-type">${cuenta.tipo}</div>
+                   //     ${cuenta.titular ? `<div class="account-type">Titular: ${cuenta.titular}</div>` : ''}
+                  //  </div>
+              //  `).join('');
+           // }
             
             // Display payment instructions
-            if (data.instruccionesPago) {
-                paymentInstructions.innerHTML = data.instruccionesPago.map(instruccion => `
-                    <li>${instruccion}</li>
-                `).join('');
-            }
+           // if (data.instruccionesPago) {
+             //   paymentInstructions.innerHTML = data.instruccionesPago.map(instruccion => `
+             //       <li>${instruccion}</li>
+              //  `).join('');
+            //}
             
             resultsDiv.style.display = 'block';
         }
