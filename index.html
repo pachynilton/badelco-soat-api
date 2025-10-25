@@ -766,207 +766,317 @@ async function makeRequest(url, options = {}) {
         });
 
         // Display results - FUNCIÓN ACTUALIZADA
-        function displayResults(data) {
-            const resultsDiv = document.getElementById('results');
-            const priceDisplay = document.getElementById('priceDisplay');
-            const resultDetails = document.getElementById('resultDetails');
-            const paymentAccounts = document.getElementById('paymentAccounts');
-            const paymentInstructions = document.getElementById('paymentInstructions');
-            
-           
-            
-            // BÚSQUEDA ESPECÍFICA DEL CAMPO TotalWithDiscountAmountFormatted
-            let precio = 0;
-            let fuentePrecio = 'No encontrado';
-            
-            function buscarPrecioRecursivo(obj, ruta = '') {
-                if (!obj || typeof obj !== 'object') return 0;
-                
-                // PRIORIDAD 1: Campo específico TotalWithDiscountAmountFormatted
-                if (obj['TotalWithDiscountAmountFormatted']) {
-                    const valorFormateado = obj['TotalWithDiscountAmountFormatted'];
-                    // Procesar formato "$590.700" (colombiano: punto = miles)
-                    let numero = valorFormateado.replace(/\$/g, ''); // Quitar $
-                    numero = numero.replace(/\./g, ''); // Quitar puntos (miles)
-                    numero = numero.replace(/,/g, '.'); // Comas a decimales
-                    const valor = parseFloat(numero);
-                    if (!isNaN(valor) && valor > 0) {
-                    }
-                }
-                
-                // PRIORIDAD 2: Otros campos formateados similares
-                const camposFormateados = [
-                    'TotalAmountFormatted', 'PriceFormatted', 'PremiumFormatted', 'ValueFormatted'
-                ];
-                
-                for (const campo of camposFormateados) {
-                    if (obj[campo] && typeof obj[campo] === 'string' && obj[campo].includes('$')) {
-                        const valorFormateado = obj[campo];
-                        let numero = valorFormateado.replace(/\$/g, '');
-                        numero = numero.replace(/\./g, '');
-                        numero = numero.replace(/,/g, '.');
-                        const valor = parseFloat(numero);
-                        if (!isNaN(valor) && valor > 0) {
-                            console.log(`💰 Precio formateado encontrado en ${ruta}.${campo}: ${valorFormateado} = ${valor}`);
-                            fuentePrecio = `${ruta}.${campo}`;
-                            return valor;
-                        }
-                    }
-                }
-                
-                // PRIORIDAD 3: Campos numéricos
-                const camposNumericos = [
-                    'TotalWithDiscountAmount', 'TotalAmount', 'Premium', 'Price', 'Value',
-                    'precio', 'valor', 'prima', 'total', 'costo', 'tarifa'
-                ];
-                
-                for (const campo of camposNumericos) {
-                    if (obj[campo] !== undefined && obj[campo] !== null) {
-                        const valor = parseFloat(obj[campo]);
-                        if (!isNaN(valor) && valor > 0) {
-                        fuentePrecio = `${ruta}.TotalWithDiscountAmountFormatted`;
-                        return valor;
-                        }
-                    }
-                }
-                
-                // Buscar en objetos anidados
-                for (const [key, value] of Object.entries(obj)) {
-                    if (typeof value === 'object' && value !== null) {
-                        const nuevaRuta = ruta ? `${ruta}.${key}` : key;
-                        const resultado = buscarPrecioRecursivo(value, nuevaRuta);
-                        if (resultado > 0) return resultado;
-                    }
-                }
-                
-                return 0;
-            }
-            
-            // Buscar precio en toda la respuesta
-            if (data.precio && data.precio > 0) {
-                precio = data.precio;
-                fuentePrecio = 'data.precio';
-            } else {
-                precio = buscarPrecioRecursivo(data, 'data');
-                if (precio === 0 && data.debug && data.debug.originalResponse) {
-                    precio = buscarPrecioRecursivo(data.debug.originalResponse, 'originalResponse');
-                }
-            }
-            
-            // CALCULAR COSTOS CON PLATAFORMA
-            const costoPlataforma = 20000;
-            const totalConPlataforma = precio + costoPlataforma;
-            
-            // Mostrar total en el display principal
-            const formattedPrice = new Intl.NumberFormat('es-CO', {
-                style: 'currency',
-                currency: 'COP',
-                minimumFractionDigits: 0
-            }).format(totalConPlataforma);
-            
-            priceDisplay.textContent = formattedPrice;
-            
-            // Extraer información del vehículo
-            let vehicleInfo = {
-                tipo: data.tipoVehiculo || 'AUTOMOVIL',
-                marca: data.marca || 'N/A',
-                modelo: data.modelo || 'N/A',
-                cilindraje: data.cilindraje || 'N/A',
-                año: data.año || 'N/A'
-            };
-            
-            if (data.debug && data.debug.vehicleInfoCompleta) {
-                const vehicleData = data.debug.vehicleInfoCompleta;
-                vehicleInfo = {
-                    tipo: vehicleData.tipo || data.tipoVehiculo || 'AUTOMOVIL',
-                    marca: vehicleData.marca || data.marca || 'N/A', 
-                    modelo: vehicleData.modelo || data.modelo || 'N/A',
-                    cilindraje: vehicleData.cilindraje || data.cilindraje || 'N/A',
-                    año: vehicleData.año || data.año || 'N/A'
-                };
-            }
-            
-            if (data.debug && data.debug.originalResponse && data.debug.originalResponse.data) {
-                const apiData = data.debug.originalResponse.data;
-                vehicleInfo = {
-                    tipo: apiData.VehicleClassName || apiData.VehicleClassMinistryName || vehicleInfo.tipo,
-                    marca: apiData.BrandName || vehicleInfo.marca,
-                    modelo: apiData.VehicleLineDescription || vehicleInfo.modelo,
-                    cilindraje: apiData.CylinderCapacity || vehicleInfo.cilindraje,
-                    chasis: apiData.ChasisNumber || vehicleInfo.chasis,
-                    motor: apiData.MotorNumber || vehicleInfo.motor,
-                    año: apiData.VehicleYear || vehicleInfo.año
-                };
-            }
-            
-            // Build result details CON COSTOS DESGLOSADOS
-            const details = [
-                { label: 'Placa', value: data.placa },
-                { label: 'Tipo de Vehículo', value: vehicleInfo.tipo },
-                { label: 'Marca', value: vehicleInfo.marca },
-                { label: 'Modelo', value: vehicleInfo.modelo },
-                { label: 'Cilindraje', value: vehicleInfo.cilindraje },
-                { label: 'Chasis', value: vehicleInfo.chasis },
-                { label: 'Motor', value: vehicleInfo.motor },
-                { label: 'Año', value: vehicleInfo.año },
-                { label: 'Vigencia', value: '1 año' },
-                { label: 'Inicio de Vigencia', value: formatDate(data.inicioVigencia || new Date()) },
-                { label: 'Fin de Vigencia', value: formatDate(data.finVigencia || addYear(new Date())) },
-                { 
-                    label: 'Valor SOAT', 
-                    value: precio > 0 ? new Intl.NumberFormat('es-CO', {
-                        style: 'currency',
-                        currency: 'COP',
-                        minimumFractionDigits: 0
-                    }).format(precio) : 'Consultando...'
-                },
-                { 
-                    label: 'Costo de Plataforma', 
-                    value: new Intl.NumberFormat('es-CO', {
-                        style: 'currency',
-                        currency: 'COP',
-                        minimumFractionDigits: 0
-                    }).format(costoPlataforma)
-                },
-                { 
-                    label: 'Total a Pagar', 
-                    value: new Intl.NumberFormat('es-CO', {
-                        style: 'currency',
-                        currency: 'COP',
-                        minimumFractionDigits: 0
-                    }).format(totalConPlataforma),
-                    isTotal: true
-                }
-            ];
-            
-            resultDetails.innerHTML = details.map(item => `
-                <div class="result-item ${item.isTotal ? 'result-total' : ''}">
-                    <span class="result-label">${item.label}:</span>
-                    <span class="result-value">${item.value}</span>
-                </div>
-            `).join('');
-            
-            // Display payment accounts
-           // if (data.cuentasBancarias) {
-             //   paymentAccounts.innerHTML = data.cuentasBancarias.map(cuenta => `
-                  //  <div class="account-info">
-                      //  <div class="account-bank">${cuenta.banco}</div>
-                     //   <div class="account-number">${cuenta.numero}</div>
-                     //   <div class="account-type">${cuenta.tipo}</div>
-                   //     ${cuenta.titular ? `<div class="account-type">Titular: ${cuenta.titular}</div>` : ''}
-                  //  </div>
-              //  `).join('');
-           // }
-            
-            // Display payment instructions
-           // if (data.instruccionesPago) {
-             //   paymentInstructions.innerHTML = data.instruccionesPago.map(instruccion => `
-             //       <li>${instruccion}</li>
-              //  `).join('');
-            //}
-            
-            resultsDiv.style.display = 'block';
+        // REEMPLAZAR displayResults() en index.html
+
+function displayResults(data) {
+    const resultsDiv = document.getElementById('results');
+    const priceDisplay = document.getElementById('priceDisplay');
+    const resultDetails = document.getElementById('resultDetails');
+    const paymentAccounts = document.getElementById('paymentAccounts');
+    const paymentInstructions = document.getElementById('paymentInstructions');
+    
+    console.log('📊 Datos recibidos en displayResults:', data);
+    
+    // Buscar precio
+    let precio = 0;
+    if (data.precio && data.precio > 0) {
+        precio = data.precio;
+    } else {
+        precio = buscarPrecioRecursivo(data, 'data');
+    }
+    
+    // Calcular costos
+    const costoPlataforma = 20000;
+    const totalConPlataforma = precio + costoPlataforma;
+    
+    // Mostrar precio total
+    const formattedPrice = new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        minimumFractionDigits: 0
+    }).format(totalConPlataforma);
+    
+    priceDisplay.textContent = formattedPrice;
+    
+    // Extraer info del vehículo
+    let vehicleInfo = {
+        tipo: data.tipoVehiculo || 'AUTOMOVIL',
+        marca: data.marca || 'N/A',
+        modelo: data.modelo || 'N/A',
+        cilindraje: data.cilindraje || 'N/A',
+        chasis: data.chasis || 'N/A',
+        motor: data.motor || 'N/A',
+        año: data.año || 'N/A',
+        estado: data.estado || 'N/A'
+    };
+    
+    if (data.debug?.originalResponse?.data) {
+        const apiData = data.debug.originalResponse.data;
+        vehicleInfo = {
+            tipo: apiData.VehicleClassName || vehicleInfo.tipo,
+            marca: apiData.BrandName || vehicleInfo.marca,
+            modelo: apiData.VehicleLineDescription || vehicleInfo.modelo,
+            cilindraje: apiData.CylinderCapacity || vehicleInfo.cilindraje,
+            chasis: apiData.ChasisNumber || vehicleInfo.chasis,
+            motor: apiData.MotorNumber || vehicleInfo.motor,
+            estado: apiData.CityName || vehicleInfo.estado,
+            año: apiData.VehicleYear || vehicleInfo.año
+        };
+    }
+    
+    // ⭐ EXTRAER INFORMACIÓN DE VIGENCIA ACTUAL
+    const vigenciaActual = data.vigenciaActual || {};
+    
+    console.log('🔍 Vigencia actual extraída:', vigenciaActual);
+    
+    // Construir detalles
+    const details = [];
+    
+    // ⭐ SECCIÓN DE VIGENCIA ACTUAL CON VALIDACIÓN MEJORADA
+    if (vigenciaActual.estadoActual === 'ERROR_CONSULTA' || vigenciaActual.estadoActual === 'NO_CONSULTADO') {
+        // No se pudo consultar la vigencia
+        details.push({
+            label: 'ℹ️ Estado SOAT Actual',
+            value: 'No se pudo verificar el estado actual del SOAT',
+            isAlert: true,
+            alertType: 'info'
+        });
+        if (vigenciaActual.error) {
+            details.push({
+                label: 'Motivo',
+                value: vigenciaActual.error
+            });
         }
+    } else if (vigenciaActual.tieneVigencia === true) {
+        // Tiene SOAT vigente
+        const diasRestantes = vigenciaActual.diasRestantes || 0;
+        const alertType = diasRestantes <= 30 ? 'warning' : 'success';
+        
+        details.push({
+            label: '✅ Estado SOAT Actual',
+            value: vigenciaActual.mensaje || `Vigente - ${diasRestantes} días restantes`,
+            isAlert: true,
+            alertType: alertType
+        });
+        
+        if (vigenciaActual.aseguradora && vigenciaActual.aseguradora !== 'N/A') {
+            details.push({
+                label: '🏢 Aseguradora Actual',
+                value: vigenciaActual.aseguradora
+            });
+        }
+        
+        if (diasRestantes > 0) {
+            details.push({
+                label: '📅 Días Restantes',
+                value: `${diasRestantes} días`
+            });
+        }
+        
+        if (vigenciaActual.numeroPoliza && vigenciaActual.numeroPoliza !== 'N/A') {
+            details.push({
+                label: '📋 Póliza Actual',
+                value: vigenciaActual.numeroPoliza
+            });
+        }
+        
+        if (vigenciaActual.fechaFin) {
+            details.push({
+                label: '🗓️ Vence el',
+                value: formatDate(vigenciaActual.fechaFin)
+            });
+        }
+        
+    } else {
+        // NO tiene SOAT vigente
+        details.push({
+            label: '⚠️ Estado SOAT Actual',
+            value: 'VEHÍCULO SIN SOAT VIGENTE - ¡RENUEVA YA!',
+            isAlert: true,
+            alertType: 'danger'
+        });
+        details.push({
+            label: '⚡ Urgencia',
+            value: 'ALTA - Circular sin SOAT es una infracción grave'
+        });
+    }
+    
+    // Separador visual
+    details.push({ separator: true });
+    
+    // Información del vehículo
+    details.push({ 
+        label: '🚗 Información del Vehículo',
+        value: '',
+        isSubtitle: true 
+    });
+    details.push({ label: 'Placa', value: data.placa });
+    details.push({ label: 'Tipo', value: vehicleInfo.tipo });
+    details.push({ label: 'Marca', value: vehicleInfo.marca });
+    details.push({ label: 'Modelo', value: vehicleInfo.modelo });
+    details.push({ label: 'Cilindraje', value: vehicleInfo.cilindraje });
+    details.push({ label: 'Año', value: vehicleInfo.año });
+    
+    // Información de nueva vigencia
+    details.push({ separator: true });
+    details.push({ 
+        label: '📋 Nueva Póliza SOAT',
+        value: '',
+        isSubtitle: true 
+    });
+    details.push({ 
+        label: 'Vigencia', 
+        value: data.diasVigencia ? `${data.diasVigencia} días` : '365 días'
+    });
+    details.push({ 
+        label: 'Inicio', 
+        value: formatDate(data.inicioVigencia || new Date()) 
+    });
+    details.push({ 
+        label: 'Fin', 
+        value: formatDate(data.finVigencia || addYear(new Date())) 
+    });
+    
+    // Costos
+    details.push({ separator: true });
+    details.push({ 
+        label: '💰 Desglose de Costos',
+        value: '',
+        isSubtitle: true 
+    });
+    details.push({ 
+        label: 'Valor SOAT', 
+        value: precio > 0 ? new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0
+        }).format(precio) : 'Consultando...'
+    });
+    details.push({ 
+        label: 'Costo de Plataforma', 
+        value: new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0
+        }).format(costoPlataforma)
+    });
+    details.push({ 
+        label: '💳 Total a Pagar', 
+        value: new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0
+        }).format(totalConPlataforma),
+        isTotal: true
+    });
+    
+    // Renderizar detalles
+    resultDetails.innerHTML = details.map(item => {
+        if (item.separator) {
+            return '<div style="height: 15px;"></div>';
+        }
+        
+        if (item.isAlert) {
+            let bgColor, textColor, borderColor, icon;
+            
+            switch(item.alertType) {
+                case 'danger':
+                    bgColor = 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)';
+                    textColor = '#991b1b';
+                    borderColor = '#fca5a5';
+                    icon = '⚠️';
+                    break;
+                case 'warning':
+                    bgColor = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                    textColor = '#92400e';
+                    borderColor = '#fcd34d';
+                    icon = '🔔';
+                    break;
+                case 'success':
+                    bgColor = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+                    textColor = '#065f46';
+                    borderColor = '#6ee7b7';
+                    icon = '✅';
+                    break;
+                case 'info':
+                    bgColor = 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)';
+                    textColor = '#1e40af';
+                    borderColor = '#93c5fd';
+                    icon = 'ℹ️';
+                    break;
+                default:
+                    bgColor = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                    textColor = '#374151';
+                    borderColor = '#d1d5db';
+                    icon = '📌';
+            }
+            
+            return `
+                <div style="
+                    background: ${bgColor};
+                    border: 2px solid ${borderColor};
+                    border-radius: 12px;
+                    padding: 15px;
+                    margin: 10px 0 20px 0;
+                    ${item.alertType === 'danger' || item.alertType === 'warning' ? 'animation: pulse 2s infinite;' : ''}
+                ">
+                    <div style="font-weight: 700; color: ${textColor}; font-size: 14px; margin-bottom: 5px;">
+                        ${icon} ${item.label}
+                    </div>
+                    <div style="font-weight: 600; color: ${textColor}; font-size: 16px;">
+                        ${item.value}
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (item.isSubtitle) {
+            return `
+                <div style="
+                    font-weight: 700;
+                    color: var(--primary-color);
+                    font-size: 16px;
+                    margin-top: 15px;
+                    margin-bottom: 10px;
+                    padding: 10px 15px;
+                    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+                    border-left: 4px solid var(--secondary-color);
+                    border-radius: 8px;
+                ">
+                    ${item.label}
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="result-item ${item.isTotal ? 'result-total' : ''}">
+                <span class="result-label">${item.label}:</span>
+                <span class="result-value">${item.value}</span>
+            </div>
+        `;
+    }).join('');
+    
+    // Mostrar cuentas bancarias
+    if (data.cuentasBancarias) {
+        paymentAccounts.innerHTML = data.cuentasBancarias.map(cuenta => `
+            <div class="account-info">
+                <div class="account-bank">${cuenta.banco}</div>
+                <div class="account-number">${cuenta.numero}</div>
+                <div class="account-type">${cuenta.tipo}</div>
+                ${cuenta.titular ? `<div class="account-type">Titular: ${cuenta.titular}</div>` : ''}
+            </div>
+        `).join('');
+    }
+    
+    // Mostrar instrucciones
+    if (data.instruccionesPago) {
+        paymentInstructions.innerHTML = data.instruccionesPago.map(instruccion => `
+            <li>${instruccion}</li>
+        `).join('');
+    }
+    
+    resultsDiv.style.display = 'block';
+}
 
         // Show alert
         function showAlert(message, type) {
@@ -1201,6 +1311,7 @@ async function makeRequest(url, options = {}) {
     </script>
 </body>
 </html>
+
 
 
 
