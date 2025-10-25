@@ -169,6 +169,197 @@ async function generateNewToken() {
     }
 }
 
+// Función CORREGIDA para consultar vigencia actual del SOAT
+async function consultarVigenciaActual(placa) {
+    try {
+        console.log(`\n🔍 Consultando vigencia REAL para placa: ${placa}`);
+        
+        const token = await getValidToken();
+        
+        // El endpoint correcto según la documentación es /publico
+        const vigenciaUrl = `${API_BASE_URL}publico`;
+        
+        console.log('📡 URL vigencia:', vigenciaUrl);
+        console.log('📡 Placa a consultar:', placa.toUpperCase());
+        console.log('🔑 Token:', token.substring(0, 30) + '***');
+        
+        // Probar con diferentes estrategias de headers
+        const headerStrategies = [
+            { name: 'Auth-Token', headers: { 'Auth-Token': token } },
+            { name: 'Authorization Bearer', headers: { 'Authorization': `Bearer ${token}` } },
+            { name: 'AuthToken', headers: { 'AuthToken': token } }
+        ];
+        
+        let vigenciaResponse = null;
+        let lastError = null;
+        
+        for (const strategy of headerStrategies) {
+            try {
+                console.log(`🔄 Probando consulta vigencia con: ${strategy.name}`);
+                
+                vigenciaResponse = await axios.get(vigenciaUrl, {
+                    headers: {
+                        ...strategy.headers,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    params: {
+                        numPlaca: placa.toUpperCase()
+                    },
+                    timeout: 10000,
+                    validateStatus: (status) => status < 500 // Aceptar respuestas 4xx
+                });
+                
+                console.log(`📊 Response Status: ${vigenciaResponse.status}`);
+                console.log('📊 Response Data:', JSON.stringify(vigenciaResponse.data, null, 2));
+                
+                if (vigenciaResponse.status === 200 || vigenciaResponse.status === 201) {
+                    console.log(`✅ Vigencia consultada exitosamente con: ${strategy.name}`);
+                    break;
+                } else {
+                    console.log(`⚠️ Status ${vigenciaResponse.status} con ${strategy.name}`);
+                }
+                
+            } catch (error) {
+                console.log(`❌ Error con ${strategy.name}:`, error.message);
+                if (error.response) {
+                    console.log('   Status:', error.response.status);
+                    console.log('   Data:', JSON.stringify(error.response.data, null, 2));
+                }
+                lastError = error;
+            }
+        }
+        
+        // Verificar si obtuvimos respuesta exitosa
+        if (!vigenciaResponse || vigenciaResponse.status !== 200) {
+            console.log('⚠️ No se pudo consultar vigencia con la API');
+            return {
+                tieneVigencia: false,
+                estadoActual: 'NO_CONSULTADO',
+                fechaInicio: null,
+                fechaFin: null,
+                diasRestantes: 0,
+                aseguradora: 'No se pudo consultar',
+                numeroPoliza: 'N/A',
+                error: lastError?.message || 'No disponible'
+            };
+        }
+        
+        // Extraer datos de la respuesta
+        const responseData = vigenciaResponse.data;
+        
+        // La API puede devolver los datos en diferentes estructuras
+        // Buscar en data.data o directamente en data
+        const vigenciaData = responseData.data || responseData;
+        
+        console.log('\n📋 Datos de vigencia extraídos:');
+        console.log('- HasPolicy:', vigenciaData.HasPolicy);
+        console.log('- PolicyStatus:', vigenciaData.PolicyStatus);
+        console.log('- FromValidateDate:', vigenciaData.FromValidateDate);
+        console.log('- DueValidateDate:', vigenciaData.DueValidateDate);
+        console.log('- RemainingDays:', vigenciaData.RemainingDays);
+        console.log('- InsuranceCompanyName:', vigenciaData.InsuranceCompanyName);
+        console.log('- PolicyNumber:', vigenciaData.PolicyNumber);
+        
+        // Construir objeto de respuesta con los datos reales
+        const resultado = {
+            tieneVigencia: vigenciaData.HasPolicy === true || vigenciaData.HasPolicy === 1,
+            estadoActual: vigenciaData.PolicyStatus || (vigenciaData.HasPolicy ? 'VIGENTE' : 'SIN_VIGENCIA'),
+            fechaInicio: vigenciaData.FromValidateDate || null,
+            fechaFin: vigenciaData.DueValidateDate || null,
+            diasRestantes: parseInt(vigenciaData.RemainingDays) || 0,
+            aseguradora: vigenciaData.InsuranceCompanyName || 'N/A',
+            numeroPoliza: vigenciaData.PolicyNumber || 'N/A'
+        };
+        
+        console.log('\n✅ Resultado procesado:', resultado);
+        
+        return resultado;
+        
+    } catch (error) {
+        console.error('❌ ERROR en consultarVigenciaActual:', error.message);
+        if (error.response) {
+            console.error('   Response status:', error.response.status);
+            console.error('   Response data:', JSON.stringify(error.response.data, null, 2));
+        }
+        
+        return {
+            tieneVigencia: false,
+            estadoActual: 'ERROR_CONSULTA',
+            fechaInicio: null,
+            fechaFin: null,
+            diasRestantes: 0,
+            aseguradora: 'Error al consultar',
+            numeroPoliza: 'N/A',
+            error: error.message
+        };
+    }
+}
+
+// ENDPOINT DE PRUEBA para verificar vigencia directamente
+app.get('/api/test-vigencia/:placa', async (req, res) => {
+    try {
+        const { placa } = req.params;
+        
+        console.log(`\n🧪 TEST DE VIGENCIA PARA PLACA: ${placa}`);
+        
+        const vigencia = await consultarVigenciaActual(placa);
+        
+        res.json({
+            success: true,
+            placa: placa.toUpperCase(),
+            vigencia: vigencia,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            placa: req.params.placa
+        });
+    }
+});
+
+// ENDPOINT DE DEBUG para ver la respuesta RAW de la API
+app.get('/api/debug-vigencia/:placa', async (req, res) => {
+    try {
+        const { placa } = req.params;
+        const token = await getValidToken();
+        
+        console.log(`\n🐛 DEBUG VIGENCIA RAW para: ${placa}`);
+        
+        const response = await axios.get(`${API_BASE_URL}publico`, {
+            headers: {
+                'Auth-Token': token,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            params: {
+                numPlaca: placa.toUpperCase()
+            },
+            timeout: 10000
+        });
+        
+        res.json({
+            success: true,
+            status: response.status,
+            headers: response.headers,
+            data: response.data,
+            url: `${API_BASE_URL}publico`,
+            params: { numPlaca: placa.toUpperCase() }
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            response: error.response?.data,
+            status: error.response?.status
+        });
+    }
+});
+
 // Función para obtener token válido
 async function getValidToken() {
     // Si estamos usando token fijo y ha pasado más de 1 hora, intentar generar nuevo
@@ -599,6 +790,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔑 Token configurado: ${AUTH_TOKEN.substring(0, 30)}***`);
     console.log('🚀 ================================\n');
 });
+
 
 
 
