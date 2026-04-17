@@ -917,14 +917,33 @@
                 console.log('📝 Opciones:', options);
             }
 
-            const response = await fetch(url, {
-                ...options,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    ...options.headers
+            const { timeoutMs = 60000, headers: customHeaders = {}, ...fetchOptions } = options;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            let response;
+            try {
+                response = await fetch(url, {
+                    ...fetchOptions,
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...customHeaders
+                    }
+                });
+            } catch (error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    const timeoutError = new Error('La operación tardó demasiado. Intenta nuevamente en unos segundos.');
+                    timeoutError.status = 504;
+                    throw timeoutError;
                 }
-            });
+
+                throw error;
+            }
+
+            clearTimeout(timeoutId);
 
             let data = null;
             const text = await response.text();
@@ -1012,6 +1031,26 @@
             select.innerHTML = [`<option value="">${placeholder}</option>`]
                 .concat(options.map(option => `<option value="${option}">${option}</option>`))
                 .join('');
+        }
+
+        function renderBackendFlags() {
+            const flags = document.getElementById('backendFlags');
+            if (!flags) {
+                return;
+            }
+
+            const items = [];
+            if (appConfig.sameConfigured) {
+                items.push('<span class="flag-pill is-ok">SAME configurado</span>');
+            } else {
+                items.push('<span class="flag-pill is-warn">SAME pendiente</span>');
+            }
+
+            if (appConfig.smtpConfigured) {
+                items.push('<span class="flag-pill is-ok">SMTP activo</span>');
+            }
+
+            flags.innerHTML = items.join('');
         }
 
     
@@ -1344,6 +1383,7 @@
             try {
                 const data = await makeRequest(`${PROXY_URL}/expedir`, {
                     method: 'POST',
+                    timeoutMs: 70000,
                     headers: {
                         Authorization: `Bearer ${allyState.sessionToken}`
                     },
