@@ -108,6 +108,8 @@ const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || 'false') === 'true';
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
+const SAME_REQUEST_TIMEOUT_MS = Number(process.env.SAME_REQUEST_TIMEOUT_MS || 12000);
+const SMTP_SEND_TIMEOUT_MS = Number(process.env.SMTP_SEND_TIMEOUT_MS || 10000);
 
 const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
 const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
@@ -314,6 +316,9 @@ function createTransporter() {
         host: SMTP_HOST,
         port: SMTP_PORT,
         secure: SMTP_SECURE,
+        connectionTimeout: 8000,
+        greetingTimeout: 7000,
+        socketTimeout: 10000,
         auth: {
             user: SMTP_USER,
             pass: SMTP_PASS
@@ -382,7 +387,7 @@ async function sendAliadoNotification({
     }
 
     const transporter = createTransporter();
-    await transporter.sendMail({
+    const mailOptions = {
         from: process.env.SMTP_FROM || SMTP_USER,
         to: NOTIFICATION_EMAIL,
         subject: `Badelco SOAT - ${issued ? 'EXPEDIDO' : 'FALLIDO'} - ${aliado} / ${asesor}`,
@@ -421,7 +426,24 @@ async function sendAliadoNotification({
             <p><strong>Ciudad contacto:</strong> ${payload.contacto.ciudad}</p>
             <p><strong>Direccion contacto:</strong> ${payload.contacto.direccion}</p>
         `
-    });
+    };
+
+    try {
+        await Promise.race([
+            transporter.sendMail(mailOptions),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera SMTP agotado')), SMTP_SEND_TIMEOUT_MS))
+        ]);
+    } catch (error) {
+        const localFile = saveLocalNotification(payload);
+        console.warn('⚠️ No se pudo enviar notificación por SMTP a tiempo:', error.message);
+        return {
+            sent: false,
+            reason: error.message,
+            channel: localFile ? 'local-file' : 'none',
+            localFile,
+            payload
+        };
+    }
 
     return {
         sent: true,
@@ -460,19 +482,27 @@ async function getSameToken() {
 
 async function sameRequest(method, endpoint, { params, data } = {}) {
     const token = await getSameToken();
-    return axios({
-        method,
-        url: `${SAME_API_BASE_URL}${endpoint}`,
-        params,
-        data,
-        timeout: 20000,
-        headers: {
-            AuthToken: token,
-            indPrueba: SAME_IND_PRUEBA,
-            'Content-Type': 'application/json',
-            Accept: 'application/json'
+    try {
+        return await axios({
+            method,
+            url: `${SAME_API_BASE_URL}${endpoint}`,
+            params,
+            data,
+            timeout: SAME_REQUEST_TIMEOUT_MS,
+            headers: {
+                AuthToken: token,
+                indPrueba: SAME_IND_PRUEBA,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            }
+        });
+    } catch (error) {
+        if (error.code === 'ECONNABORTED') {
+            error.statusCode = 504;
+            error.publicMessage = `SAME tardó más de ${Math.floor(SAME_REQUEST_TIMEOUT_MS / 1000)} segundos en responder`;
         }
-    });
+        throw error;
+    }
 }
 
 function parseFormattedMoney(value) {
@@ -1175,9 +1205,10 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
                 detail: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT'
             })
             : null;
-        res.status(error.response?.status || 500).json({
+        const statusCode = error.response?.status || error.statusCode || 500;
+        res.status(statusCode).json({
             success: false,
-            message: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT',
+            message: error.response?.data?.message || error.publicMessage || error.message || 'No fue posible expedir el SOAT',
             error: error.response?.data || null,
             notification
         });
