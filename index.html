@@ -535,6 +535,156 @@
                 height: 28px;
             }
         }
+
+        .btn-outline {
+            background: #fff7ed;
+            color: var(--secondary-color);
+            border: 1px solid rgba(226, 85, 50, 0.25);
+        }
+
+        .btn-outline:hover {
+            background: #ffedd5;
+            transform: translateY(-2px);
+        }
+
+        .ally-status {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: #fff7ed;
+            border: 1px solid rgba(226, 85, 50, 0.2);
+            color: #9a3412;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .ally-status strong {
+            color: var(--primary-color);
+        }
+
+        .ally-status.is-ready {
+            background: #ecfdf5;
+            border-color: rgba(16, 185, 129, 0.25);
+            color: #065f46;
+        }
+
+        .overlay-page {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.62);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 1200;
+        }
+
+        .overlay-page.is-open {
+            display: flex;
+        }
+
+        .overlay-card {
+            width: min(100%, 560px);
+            background: linear-gradient(180deg, #fffaf5 0%, #ffffff 100%);
+            border-radius: 24px;
+            box-shadow: 0 30px 70px rgba(15, 23, 42, 0.28);
+            padding: 32px;
+            position: relative;
+        }
+
+        .overlay-close {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            border: none;
+            background: transparent;
+            font-size: 28px;
+            line-height: 1;
+            cursor: pointer;
+            color: #6b7280;
+        }
+
+        .overlay-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .overlay-copy {
+            font-size: 15px;
+            color: var(--text-light);
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .overlay-step {
+            display: none;
+        }
+
+        .overlay-step.is-active {
+            display: block;
+        }
+
+        .credential-hint {
+            margin-top: 16px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #f3f4f6;
+            font-size: 13px;
+            color: #4b5563;
+            line-height: 1.5;
+        }
+
+        .backend-flags {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .flag-card {
+            border-radius: 14px;
+            padding: 14px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+
+        .flag-card strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--primary-color);
+        }
+
+        .flag-card span {
+            font-size: 13px;
+            color: var(--text-light);
+        }
+
+        .flag-card.is-on {
+            background: #ecfdf5;
+            border-color: rgba(16, 185, 129, 0.25);
+        }
+
+        .flag-card.is-off {
+            background: #fff7ed;
+            border-color: rgba(226, 85, 50, 0.2);
+        }
+
+        @media (max-width: 640px) {
+            .backend-flags {
+                grid-template-columns: 1fr;
+            }
+
+            .overlay-card {
+                padding: 24px;
+            }
+
+            .overlay-title {
+                font-size: 24px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -653,279 +803,350 @@
                             <span>✅</span>
                             <span>Expedir SOAT</span>
                         </button>
+
+                        <button class="btn btn-outline" id="aliadosBtn">
+                            <span>🤝</span>
+                            <span>Aliados</span>
+                        </button>
+                    </div>
+
+                    <div class="ally-status" id="allyStatus">
+                        <strong>Aliados:</strong> inicia sesión y selecciona aliado y asesor antes de expedir.
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <div class="overlay-page" id="alliesOverlay" aria-hidden="true">
+        <div class="overlay-card">
+            <button type="button" class="overlay-close" id="closeAlliesBtn" aria-label="Cerrar">×</button>
+
+            <section class="overlay-step is-active" id="alliesLoginStep">
+                <h2 class="overlay-title">Ingreso de Aliados</h2>
+                <p class="overlay-copy">Accede con el usuario y la contraseña definidos para el canal de aliados. Después podrás asignar aliado y asesor para la expedición.</p>
+
+                <form id="alliesLoginForm">
+                    <div class="form-group">
+                        <label class="form-label" for="alliesUser">Usuario</label>
+                        <input type="text" id="alliesUser" class="form-input" placeholder="12345" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="alliesPassword">Contraseña</label>
+                        <input type="password" id="alliesPassword" class="form-input" placeholder="12345" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <span>Ingresar</span>
+                    </button>
+                </form>
+
+                <div class="credential-hint" id="alliesLoginMessage">
+                    Usa las credenciales del canal de aliados para continuar.
+                </div>
+            </section>
+
+            <section class="overlay-step" id="alliesSelectionStep">
+                <h2 class="overlay-title">Asignación de Venta</h2>
+                <p class="overlay-copy">Selecciona el aliado y el asesor que quedarán asociados a la expedición. Esta selección se guarda en el navegador actual.</p>
+
+                <div class="backend-flags" id="backendFlags"></div>
+
+                <form id="alliesSelectionForm">
+                    <div class="form-group">
+                        <label class="form-label" for="allySelect">Aliado</label>
+                        <select id="allySelect" class="form-input" required></select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="advisorSelect">Asesor</label>
+                        <select id="advisorSelect" class="form-input" required></select>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <span>Guardar y expedir automáticamente</span>
+                    </button>
+                </form>
+
+                <div class="credential-hint" id="selectionMessage">
+                    La notificación se enviará a info@badelco.co cuando aliado y asesor disparen la expedición automática.
+                </div>
+            </section>
+        </div>
+    </div>
+
     <script>
+        function resolveApiBaseUrl() {
+            const host = window.location.hostname;
+            const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
 
-        // Bloquear clic derecho
-    document.addEventListener('contextmenu', function(e) {
-    e.preventDefault();
-    });
-
-    // Bloquear teclas comunes de inspección (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U)
-    document.addEventListener('keydown', function(e) {
-    // F12
-    if (e.keyCode === 123) {
-        e.preventDefault();
-        return false;
-    }
-    // Ctrl+Shift+I/J/C
-    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) {
-        e.preventDefault();
-        return false;
-    }
-    // Ctrl+U
-    if (e.ctrlKey && e.key === 'u') {
-        e.preventDefault();
-        return false;
-    }
-    });
-
-        
-       // Configuration - VERSIÓN CORREGIDA
-const PROXY_URL = 'https://badelco-soat-api-production.up.railway.app/api';
-const DEBUG = true; // Activar para ver errores
-
-// Función mejorada para hacer requests
-async function makeRequest(url, options = {}) {
-    console.log('🚀 Haciendo request a:', url);
-    console.log('📝 Opciones:', options);
-    
-    try {
-        const response = await fetch(url, {
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                ...options.headers
+            // Si abres el HTML en localhost (Live Server u otro), usa el backend local.
+            if (isLocalHost) {
+                return 'http://localhost:3000/api';
             }
-        });
-        
-        console.log('📊 Response status:', response.status);
-        console.log('📊 Response ok:', response.ok);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Error response:', errorText);
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+
+            // En producción se mantiene Railway.
+            return 'https://badelco-soat-api-production.up.railway.app/api';
         }
-        
-        return response;
-        
-    } catch (error) {
-        console.error('❌ Request failed:', error);
-        throw error;
-    }
-}
 
-        // Form handling
-        document.getElementById('cotizadorForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const form = e.target;
-            const submitBtn = form.querySelector('button[type="submit"]');
-            const spinner = submitBtn.querySelector('.spinner');
-            
-            // Clear previous results
-            document.getElementById('results').style.display = 'none';
-            
-            // Show loading state
-            submitBtn.disabled = true;
-            spinner.style.display = 'inline-block';
-            
-            // Get form data
-            const formData = {
-                placa: form.placa.value.toUpperCase(),
-                documentType: form.documentType.value,
-                documentNumber: form.documentNumber.value
-            };
-            
+        const PROXY_URL = resolveApiBaseUrl();
+        const DEBUG = true;
+        const TRANSFER_PAGE_URL = 'https://badelco.co/expedir-soat/';
+
+        let lastQuoteData = null;
+        let appConfig = {
+            sameConfigured: false,
+            smtpConfigured: false,
+            allyOptions: ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'],
+            advisorOptions: ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05']
+        };
+
+        const allyState = {
+            authenticated: false,
+            user: '',
+            sessionToken: '',
+            sessionExpiresAt: 0,
+            aliado: '',
+            asesor: ''
+        };
+
+        async function makeRequest(url, options = {}) {
             if (DEBUG) {
-                showDebugInfo(`Enviando solicitud a: ${PROXY_URL}/cotizar`, formData);
+                console.log('🚀 Haciendo request a:', url);
+                console.log('📝 Opciones:', options);
             }
-            
-            try {
-                const response = await makeRequest(`${PROXY_URL}/cotizar`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
-                
-                if (!response.ok) {
-                    if (response.type === 'opaque') {
-                        showAlert('Solicitud enviada. Si no ves resultados, hay un problema de conectividad.', 'error');
-                        return;
-                    }
-                    
-                    const errorText = await response.text();
-                    throw new Error(`Error del servidor: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                displayResults(data);
-                showAlert('Cotización realizada exitosamente', 'success');
-                
-            } catch (error) {
-                let errorMessage = 'Error al procesar la cotización';
-                
-                if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    errorMessage = 'Error de conexión. Por favor intenta nuevamente.';
-                } else if (error.message.includes('CORS')) {
-                    errorMessage = 'Error de conectividad. Contacta al administrador.';
-                } else if (error.message.includes('HTTP')) {
-                    errorMessage = 'Error del servidor. Intenta más tarde.';
-                }
-                
-                showAlert(errorMessage, 'error');
-            } finally {
-                submitBtn.disabled = false;
-                spinner.style.display = 'none';
-            }
-        });
 
-        // Display results - FUNCIÓN ACTUALIZADA
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...options.headers
+                }
+            });
+
+            let data = null;
+            const text = await response.text();
+            try {
+                data = text ? JSON.parse(text) : null;
+            } catch (error) {
+                data = text;
+            }
+
+            if (!response.ok) {
+                const message = data?.message || text || `HTTP ${response.status}`;
+                const requestError = new Error(message);
+                requestError.status = response.status;
+                requestError.payload = data;
+                throw requestError;
+            }
+
+            return data;
+        }
+
+        function loadAllyState() {
+            // La sesión de aliados nunca se restaura automáticamente.
+            // El usuario SIEMPRE debe ingresar la contraseña al abrir el overlay.
+            allyState.authenticated = false;
+            allyState.user = '';
+            allyState.sessionToken = '';
+            allyState.sessionExpiresAt = 0;
+            allyState.aliado = '';
+            allyState.asesor = '';
+        }
+
+        async function logoutAllyState() {
+            if (allyState.sessionToken) {
+                try {
+                    await makeRequest(`${PROXY_URL}/auth/logout`, {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${allyState.sessionToken}`
+                        }
+                    });
+                } catch (error) {
+                    // No bloquear el logout local si la sesión ya expiró en backend.
+                }
+            }
+
+            allyState.authenticated = false;
+            allyState.user = '';
+            allyState.sessionToken = '';
+            allyState.sessionExpiresAt = 0;
+            allyState.aliado = '';
+            allyState.asesor = '';
+            sessionStorage.removeItem('badelco-ally-state');
+            updateAllyStatus();
+        }
+
+        function saveAllyState() {
+            sessionStorage.setItem('badelco-ally-state', JSON.stringify({
+                aliado: allyState.aliado,
+                asesor: allyState.asesor,
+                authenticated: allyState.authenticated
+            }));
+        }
+
+        function updateAllyStatus() {
+            const status = document.getElementById('allyStatus');
+            const hasSelection = allyState.authenticated && allyState.aliado && allyState.asesor;
+
+            status.classList.toggle('is-ready', hasSelection);
+
+            if (!allyState.authenticated) {
+                status.innerHTML = '<strong>Aliados:</strong> inicia sesión y selecciona aliado y asesor antes de expedir.';
+                return;
+            }
+
+            if (!hasSelection) {
+                status.innerHTML = '<strong>Aliados:</strong> sesión iniciada. Falta elegir aliado y asesor.';
+                return;
+            }
+
+            status.innerHTML = `<strong>Aliados:</strong> sesión activa de ${allyState.user || 'usuario'} - ${allyState.aliado} / ${allyState.asesor}. ${appConfig.sameConfigured ? 'La emisión SAME está habilitada.' : 'La emisión SAME requiere configurar llaves en Railway.'}`;
+        }
+
+        function renderOptions(selectId, options, placeholder) {
+            const select = document.getElementById(selectId);
+            select.innerHTML = [`<option value="">${placeholder}</option>`]
+                .concat(options.map(option => `<option value="${option}">${option}</option>`))
+                .join('');
+        }
+
+    
+
+        function showAlliesStep(stepId) {
+            document.querySelectorAll('.overlay-step').forEach(step => {
+                step.classList.toggle('is-active', step.id === stepId);
+            });
+        }
+
+        function openAlliesOverlay() {
+            const overlay = document.getElementById('alliesOverlay');
+            overlay.classList.add('is-open');
+            overlay.setAttribute('aria-hidden', 'false');
+
+            // Siempre exigir contraseña al abrir el overlay.
+            document.getElementById('alliesUser').value = '';
+            document.getElementById('alliesPassword').value = '';
+            document.getElementById('alliesLoginMessage').textContent = '';
+            showAlliesStep('alliesLoginStep');
+        }
+
+        function closeAlliesOverlay() {
+            const overlay = document.getElementById('alliesOverlay');
+            overlay.classList.remove('is-open');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        async function fetchConfig() {
+            try {
+                const data = await makeRequest(`${PROXY_URL}/config`);
+                appConfig = data;
+            } catch (error) {
+                console.error('No fue posible cargar configuración del backend:', error);
+            } finally {
+                renderOptions('allySelect', appConfig.allyOptions, 'Seleccione un aliado');
+                renderOptions('advisorSelect', appConfig.advisorOptions, 'Seleccione un asesor');
+                renderBackendFlags();
+                updateAllyStatus();
+            }
+        }
+
+        function formatMoney(value) {
+            return new Intl.NumberFormat('es-CO', {
+                style: 'currency',
+                currency: 'COP',
+                minimumFractionDigits: 0
+            }).format(value || 0);
+        }
+
+        function showAlert(message, type) {
+            const alertContainer = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+
+            alertContainer.innerHTML = '';
+            alertContainer.appendChild(alert);
+            alert.style.display = 'block';
+
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5500);
+        }
+
+        function showDebugInfo(label, data) {
+            if (!DEBUG) return;
+            console.log(`🔍 ${label}`);
+            console.log(data);
+        }
+
+        function formatDate(date) {
+            const safeDate = typeof date === 'string' ? new Date(date) : date;
+            return safeDate.toLocaleDateString('es-CO', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        function addYear(date) {
+            const newDate = new Date(date);
+            newDate.setFullYear(newDate.getFullYear() + 1);
+            return newDate;
+        }
+
+        function getQuotePrice(data) {
+            if (data.precio && data.precio > 0) {
+                return data.precio;
+            }
+
+            const candidates = [
+                data.debug?.originalResponse?.data?.NewTariff?.TotalWithDiscountAmount,
+                data.debug?.originalResponse?.data?.NewTariff?.Total,
+                data.debug?.originalResponse?.data?.tarifa?.TotalWithDiscountAmount,
+                data.debug?.originalResponse?.data?.tarifa?.Total,
+                data.debug?.extractedPrice
+            ];
+
+            for (const value of candidates) {
+                const parsed = Number(value);
+                if (!Number.isNaN(parsed) && parsed > 0) {
+                    return parsed;
+                }
+            }
+
+            return 0;
+        }
+
+        function getVehicleInfo(data) {
+            const apiData = data.debug?.originalResponse?.data || {};
+            return {
+                tipo: apiData.VehicleClassName || apiData.VehicleClassMinistryName || data.tipoVehiculo || 'AUTOMOVIL',
+                marca: apiData.BrandName || data.marca || 'N/A',
+                modelo: apiData.VehicleLineDescription || data.modelo || 'N/A',
+                cilindraje: apiData.CylinderCapacity || data.cilindraje || 'N/A',
+                chasis: apiData.ChasisNumber || 'N/A',
+                motor: apiData.MotorNumber || 'N/A',
+                año: apiData.VehicleYear || data.año || 'N/A'
+            };
+        }
+
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
             const priceDisplay = document.getElementById('priceDisplay');
             const resultDetails = document.getElementById('resultDetails');
-            const paymentAccounts = document.getElementById('paymentAccounts');
-            const paymentInstructions = document.getElementById('paymentInstructions');
-            
-           
-            
-            // BÚSQUEDA ESPECÍFICA DEL CAMPO TotalWithDiscountAmountFormatted
-            let precio = 0;
-            let fuentePrecio = 'No encontrado';
-            
-            function buscarPrecioRecursivo(obj, ruta = '') {
-                if (!obj || typeof obj !== 'object') return 0;
-                
-                // PRIORIDAD 1: Campo específico TotalWithDiscountAmountFormatted
-                if (obj['TotalWithDiscountAmountFormatted']) {
-                    const valorFormateado = obj['TotalWithDiscountAmountFormatted'];
-                    // Procesar formato "$590.700" (colombiano: punto = miles)
-                    let numero = valorFormateado.replace(/\$/g, ''); // Quitar $
-                    numero = numero.replace(/\./g, ''); // Quitar puntos (miles)
-                    numero = numero.replace(/,/g, '.'); // Comas a decimales
-                    const valor = parseFloat(numero);
-                    if (!isNaN(valor) && valor > 0) {
-                    }
-                }
-                
-                // PRIORIDAD 2: Otros campos formateados similares
-                const camposFormateados = [
-                    'TotalAmountFormatted', 'PriceFormatted', 'PremiumFormatted', 'ValueFormatted'
-                ];
-                
-                for (const campo of camposFormateados) {
-                    if (obj[campo] && typeof obj[campo] === 'string' && obj[campo].includes('$')) {
-                        const valorFormateado = obj[campo];
-                        let numero = valorFormateado.replace(/\$/g, '');
-                        numero = numero.replace(/\./g, '');
-                        numero = numero.replace(/,/g, '.');
-                        const valor = parseFloat(numero);
-                        if (!isNaN(valor) && valor > 0) {
-                            console.log(`💰 Precio formateado encontrado en ${ruta}.${campo}: ${valorFormateado} = ${valor}`);
-                            fuentePrecio = `${ruta}.${campo}`;
-                            return valor;
-                        }
-                    }
-                }
-                
-                // PRIORIDAD 3: Campos numéricos
-                const camposNumericos = [
-                    'TotalWithDiscountAmount', 'TotalAmount', 'Premium', 'Price', 'Value',
-                    'precio', 'valor', 'prima', 'total', 'costo', 'tarifa'
-                ];
-                
-                for (const campo of camposNumericos) {
-                    if (obj[campo] !== undefined && obj[campo] !== null) {
-                        const valor = parseFloat(obj[campo]);
-                        if (!isNaN(valor) && valor > 0) {
-                        fuentePrecio = `${ruta}.TotalWithDiscountAmountFormatted`;
-                        return valor;
-                        }
-                    }
-                }
-                
-                // Buscar en objetos anidados
-                for (const [key, value] of Object.entries(obj)) {
-                    if (typeof value === 'object' && value !== null) {
-                        const nuevaRuta = ruta ? `${ruta}.${key}` : key;
-                        const resultado = buscarPrecioRecursivo(value, nuevaRuta);
-                        if (resultado > 0) return resultado;
-                    }
-                }
-                
-                return 0;
-            }
-            
-            // Buscar precio en toda la respuesta
-            if (data.precio && data.precio > 0) {
-                precio = data.precio;
-                fuentePrecio = 'data.precio';
-            } else {
-                precio = buscarPrecioRecursivo(data, 'data');
-                if (precio === 0 && data.debug && data.debug.originalResponse) {
-                    precio = buscarPrecioRecursivo(data.debug.originalResponse, 'originalResponse');
-                }
-            }
-            
-            // CALCULAR COSTOS CON PLATAFORMA
+            const plateMetadata = data.plateMetadata || null;
+            const precio = getQuotePrice(data);
             const costoPlataforma = 20000;
             const totalConPlataforma = precio + costoPlataforma;
-            
-            // Mostrar total en el display principal
-            const formattedPrice = new Intl.NumberFormat('es-CO', {
-                style: 'currency',
-                currency: 'COP',
-                minimumFractionDigits: 0
-            }).format(totalConPlataforma);
-            
-            priceDisplay.textContent = formattedPrice;
-            
-            // Extraer información del vehículo
-            let vehicleInfo = {
-                tipo: data.tipoVehiculo || 'AUTOMOVIL',
-                marca: data.marca || 'N/A',
-                modelo: data.modelo || 'N/A',
-                cilindraje: data.cilindraje || 'N/A',
-                año: data.año || 'N/A'
-            };
-            
-            if (data.debug && data.debug.vehicleInfoCompleta) {
-                const vehicleData = data.debug.vehicleInfoCompleta;
-                vehicleInfo = {
-                    tipo: vehicleData.tipo || data.tipoVehiculo || 'AUTOMOVIL',
-                    marca: vehicleData.marca || data.marca || 'N/A', 
-                    modelo: vehicleData.modelo || data.modelo || 'N/A',
-                    cilindraje: vehicleData.cilindraje || data.cilindraje || 'N/A',
-                    año: vehicleData.año || data.año || 'N/A'
-                };
-            }
-            
-            if (data.debug && data.debug.originalResponse && data.debug.originalResponse.data) {
-                const apiData = data.debug.originalResponse.data;
-                vehicleInfo = {
-                    tipo: apiData.VehicleClassName || apiData.VehicleClassMinistryName || vehicleInfo.tipo,
-                    marca: apiData.BrandName || vehicleInfo.marca,
-                    modelo: apiData.VehicleLineDescription || vehicleInfo.modelo,
-                    cilindraje: apiData.CylinderCapacity || vehicleInfo.cilindraje,
-                    chasis: apiData.ChasisNumber || vehicleInfo.chasis,
-                    motor: apiData.MotorNumber || vehicleInfo.motor,
-                    año: apiData.VehicleYear || vehicleInfo.año
-                };
-            }
-            
-            // Build result details CON COSTOS DESGLOSADOS
+            const vehicleInfo = getVehicleInfo(data);
+
+            lastQuoteData = data;
+            priceDisplay.textContent = formatMoney(totalConPlataforma);
+
             const details = [
                 { label: 'Placa', value: data.placa },
                 { label: 'Tipo de Vehículo', value: vehicleInfo.tipo },
@@ -935,294 +1156,368 @@ async function makeRequest(url, options = {}) {
                 { label: 'Chasis', value: vehicleInfo.chasis },
                 { label: 'Motor', value: vehicleInfo.motor },
                 { label: 'Año', value: vehicleInfo.año },
-                { label: 'Vigencia', value: '1 año' },
                 { label: 'Inicio de Vigencia', value: formatDate(data.inicioVigencia || new Date()) },
                 { label: 'Fin de Vigencia', value: formatDate(data.finVigencia || addYear(new Date())) },
-                { 
-                    label: 'Valor SOAT', 
-                    value: precio > 0 ? new Intl.NumberFormat('es-CO', {
-                        style: 'currency',
-                        currency: 'COP',
-                        minimumFractionDigits: 0
-                    }).format(precio) : 'Consultando...'
-                },
-                { 
-                    label: 'Costo de Plataforma', 
-                    value: new Intl.NumberFormat('es-CO', {
-                        style: 'currency',
-                        currency: 'COP',
-                        minimumFractionDigits: 0
-                    }).format(costoPlataforma)
-                },
-                { 
-                    label: 'Total a Pagar', 
-                    value: new Intl.NumberFormat('es-CO', {
-                        style: 'currency',
-                        currency: 'COP',
-                        minimumFractionDigits: 0
-                    }).format(totalConPlataforma),
-                    isTotal: true
-                }
+                { label: 'Valor SOAT', value: precio > 0 ? formatMoney(precio) : 'Consultando...' },
+                { label: 'Costo de Plataforma', value: formatMoney(costoPlataforma) },
+                { label: 'Total a Pagar', value: formatMoney(totalConPlataforma), isTotal: true }
             ];
-            
+
+            if (plateMetadata) {
+                details.splice(1, 0,
+                    { label: 'Tarifa', value: plateMetadata.tarifa || 'N/A' },
+                    { label: 'Portafolio', value: plateMetadata.portafolio || 'N/A' }
+                );
+            } else {
+                details.splice(1, 0, { label: 'Estado', value: 'Cotización procesada correctamente' });
+            }
+
             resultDetails.innerHTML = details.map(item => `
                 <div class="result-item ${item.isTotal ? 'result-total' : ''}">
                     <span class="result-label">${item.label}:</span>
                     <span class="result-value">${item.value}</span>
                 </div>
             `).join('');
-            
-            // Display payment accounts
-           // if (data.cuentasBancarias) {
-             //   paymentAccounts.innerHTML = data.cuentasBancarias.map(cuenta => `
-                  //  <div class="account-info">
-                      //  <div class="account-bank">${cuenta.banco}</div>
-                     //   <div class="account-number">${cuenta.numero}</div>
-                     //   <div class="account-type">${cuenta.tipo}</div>
-                   //     ${cuenta.titular ? `<div class="account-type">Titular: ${cuenta.titular}</div>` : ''}
-                  //  </div>
-              //  `).join('');
-           // }
-            
-            // Display payment instructions
-           // if (data.instruccionesPago) {
-             //   paymentInstructions.innerHTML = data.instruccionesPago.map(instruccion => `
-             //       <li>${instruccion}</li>
-              //  `).join('');
-            //}
-            
+
             resultsDiv.style.display = 'block';
+            updateAllyStatus();
         }
 
-        // Show alert
-        function showAlert(message, type) {
-            const alertContainer = document.getElementById('alertContainer');
-            const alert = document.createElement('div');
-            alert.className = `alert alert-${type}`;
-            alert.textContent = message;
-            
-            alertContainer.innerHTML = '';
-            alertContainer.appendChild(alert);
-            alert.style.display = 'block';
-            
-            setTimeout(() => {
-                alert.style.display = 'none';
-            }, 5000);
-        }
-
-        // Show debug info
-        function showDebugInfo(label, data) {
-            if (!DEBUG) return;
-            
-            console.log(`🔍 ${label}`);
-            console.log(data);
-            console.log(`Timestamp: ${new Date().toISOString()}`);
-        }
-
-        // Format date
-        function formatDate(date) {
-            if (typeof date === 'string') {
-                date = new Date(date);
-            }
-            return date.toLocaleDateString('es-CO', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-        }
-
-        // Add year to date
-        function addYear(date) {
-            const newDate = new Date(date);
-            newDate.setFullYear(newDate.getFullYear() + 1);
-            return newDate;
-        }
-
-        // FUNCIÓN MEJORADA DE CAPTURA DE PANTALLA (SIN html2canvas)
         async function captureScreen() {
             const captureButton = document.getElementById('captureBtn');
             const originalContent = captureButton.innerHTML;
-            
+
             try {
-                // Cambiar estado del botón
                 captureButton.innerHTML = '<span>⏳</span> <span>Capturando...</span>';
                 captureButton.disabled = true;
-                
-                // Método 1: Screen Capture API (navegadores modernos)
+
                 if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-                    
-                    
-                    const stream = await navigator.mediaDevices.getDisplayMedia({ 
-                        video: { 
+                    const stream = await navigator.mediaDevices.getDisplayMedia({
+                        video: {
                             mediaSource: 'screen',
                             width: { ideal: 1920 },
                             height: { ideal: 1080 }
-                        } 
+                        }
                     });
-                    
+
                     const video = document.createElement('video');
                     video.srcObject = stream;
                     video.play();
-                    
+
                     video.onloadedmetadata = () => {
                         const canvas = document.createElement('canvas');
                         canvas.width = video.videoWidth;
                         canvas.height = video.videoHeight;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(video, 0, 0);
-                        
+
                         canvas.toBlob(blob => {
                             downloadImage(blob, 'cotizacion-soat');
                             showAlert('Captura de pantalla guardada exitosamente', 'success');
                         }, 'image/png', 1.0);
-                        
-                        // Detener el stream
+
                         stream.getTracks().forEach(track => track.stop());
                     };
-                    
+
                     return;
                 }
-                
-                // Método 2: Crear canvas manual de los resultados
-                console.log('📸 Creando imagen de resultados');
-                const resultsCard = document.querySelector('.results').parentElement;
-                
-                // Crear canvas personalizado con los datos importantes
+
                 const canvas = document.createElement('canvas');
                 canvas.width = 800;
-                canvas.height = 1000;
+                canvas.height = 1040;
                 const ctx = canvas.getContext('2d');
-                
-                // Fondo blanco
+
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Header
                 ctx.fillStyle = '#e25532';
-                ctx.fillRect(0, 0, canvas.width, 100);
-                
-                // Título
+                ctx.fillRect(0, 0, canvas.width, 110);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 32px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('Badelco SOAT - Cotización', canvas.width/2, 60);
-                
-                // Contenido
+                ctx.fillText('Badelco SOAT - Cotización', canvas.width / 2, 66);
+
                 ctx.fillStyle = '#272626';
-                ctx.font = '24px Arial';
                 ctx.textAlign = 'left';
-                
-                let y = 150;
-                const lineHeight = 40;
-                
-                // Obtener datos actuales
-                const placa = document.getElementById('placa').value;
-                const precio = document.getElementById('priceDisplay').textContent;
-                
-                const info = [
-                    `Placa: ${placa}`,
-                    `Precio: ${precio}`,
+                let y = 160;
+                const lineHeight = 38;
+                const lines = [
+                    `Placa: ${document.getElementById('placa').value}`,
+                    `Documento: ${document.getElementById('documentNumber').value}`,
+                    `Total: ${document.getElementById('priceDisplay').textContent}`,
                     `Fecha: ${new Date().toLocaleDateString('es-CO')}`,
                     '',
-                    'Información de Pago:',
-                    'Bancolombia: 30685175725',
-                    'Nequi: 3128433999',
-                    '',
-                    'WhatsApp: 3128433999'
+                    `Aliado: ${allyState.aliado || 'No seleccionado'}`,
+                    `Asesor: ${allyState.asesor || 'No seleccionado'}`
                 ];
-                
-                info.forEach(line => {
-                    if (line.startsWith('Información de Pago:')) {
-                        ctx.font = 'bold 24px Arial';
-                    } else {
-                        ctx.font = '20px Arial';
-                    }
-                    ctx.fillText(line, 50, y);
+
+                lines.forEach(line => {
+                    ctx.font = line ? '20px Arial' : '16px Arial';
+                    ctx.fillText(line, 48, y);
                     y += lineHeight;
                 });
-                
-                // Descargar imagen
+
                 canvas.toBlob(blob => {
                     downloadImage(blob, 'cotizacion-soat');
                     showAlert('Imagen de cotización creada exitosamente', 'success');
                 }, 'image/png', 1.0);
-                
             } catch (error) {
                 console.error('Error capturando pantalla:', error);
-                
-                // Método 3: Fallback - Imprimir
                 showAlert('Abriendo diálogo de impresión como alternativa', 'success');
                 window.print();
-                
             } finally {
-                // Restaurar botón
                 captureButton.innerHTML = originalContent;
                 captureButton.disabled = false;
             }
         }
 
-        // Función auxiliar para descargar imagen
         function downloadImage(blob, filename) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${filename}-${new Date().getTime()}.png`;
+            a.download = `${filename}-${Date.now()}.png`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
 
-        // NUEVA FUNCIÓN PARA EXPEDIR SOAT
-        function expedirSOAT() {
-            // Obtener datos de la cotización actual
-            const placa = document.getElementById('placa').value;
+        function getCurrentQuoteRequestData() {
+            const placa = document.getElementById('placa').value.toUpperCase();
             const documentType = document.getElementById('documentType').value;
             const documentNumber = document.getElementById('documentNumber').value;
-            
-            if (!placa || !documentType || !documentNumber) {
+
+            return { placa, documentType, documentNumber };
+        }
+
+        function openTransferPage() {
+            const { placa, documentType, documentNumber } = getCurrentQuoteRequestData();
+
+            if (!placa || !documentType || !documentNumber || !lastQuoteData) {
                 showAlert('Por favor completa primero la cotización', 'error');
                 return;
             }
-            
-            // Construir parámetros para la página de expedición
+
             const params = new URLSearchParams({
-                placa: placa,
-                documentType: documentType,
-                documentNumber: documentNumber,
-                timestamp: new Date().getTime()
+                placa,
+                documentType,
+                documentNumber,
+                timestamp: String(Date.now())
             });
-            
-            // AQUÍ PUEDES CAMBIAR LA URL DE DESTINO
-            const expedicionURL = `https://badelco.co/expedir-soat/?${params.toString()}`;
-            
-            // Abrir en nueva ventana/pestaña
-            window.open(expedicionURL, '_blank');
-            
-            // Alternativamente, para redireccionar en la misma ventana:
-            // window.location.href = expedicionURL;
-            
-            showAlert('Redirigiendo a la página de expedición...', 'success');
+
+            window.open(`${TRANSFER_PAGE_URL}?${params.toString()}`, '_blank', 'noopener');
+            showAlert('Redirigiendo a la página de transferencias de Badelco...', 'success');
         }
 
-        // Format input
-        document.getElementById('placa').addEventListener('input', function(e) {
-            e.target.value = e.target.value.toUpperCase();
-        });
-        
-        // Event listeners para botones (sin onclick inline)
-        document.addEventListener('DOMContentLoaded', function() {
-            // Botón capturar pantalla
-            const captureBtn = document.getElementById('captureBtn');
-            if (captureBtn) {
-                captureBtn.addEventListener('click', captureScreen);
+        async function expedirSOATAutomatically(triggerButton = null) {
+            const { placa, documentType, documentNumber } = getCurrentQuoteRequestData();
+            const originalMarkup = triggerButton ? triggerButton.innerHTML : '';
+
+            if (!placa || !documentType || !documentNumber || !lastQuoteData) {
+                showAlert('Primero debes cotizar el SOAT antes de usar Aliados.', 'error');
+                return;
             }
-            
-            // Botón expedir SOAT
-            const expedirBtn = document.getElementById('expedirBtn');
-            if (expedirBtn) {
-                expedirBtn.addEventListener('click', expedirSOAT);
+
+            if (!(allyState.authenticated && allyState.aliado && allyState.asesor)) {
+                openAlliesOverlay();
+                showAlert('Debes iniciar sesión en Aliados y escoger aliado y asesor.', 'error');
+                return;
             }
+
+            if (!allyState.sessionToken) {
+                await logoutAllyState();
+                openAlliesOverlay();
+                showAlert('La sesión de Aliados expiró. Inicia sesión nuevamente.', 'error');
+                return;
+            }
+
+            const message = document.getElementById('selectionMessage');
+
+            if (triggerButton) {
+                triggerButton.disabled = true;
+                triggerButton.innerHTML = '<span>⏳</span><span>Expidiendo automáticamente...</span>';
+            }
+
+            message.textContent = `Expidiendo automáticamente para ${allyState.aliado} / ${allyState.asesor}...`;
+            message.style.background = '#fff7ed';
+            message.style.color = '#9a3412';
+
+            try {
+                const data = await makeRequest(`${PROXY_URL}/expedir`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${allyState.sessionToken}`
+                    },
+                    body: JSON.stringify({
+                        placa,
+                        documentType,
+                        documentNumber,
+                        aliado: allyState.aliado,
+                        asesor: allyState.asesor
+                    })
+                });
+
+                if (data.emission?.soat?.pdf) {
+                    window.open(data.emission.soat.pdf, '_blank', 'noopener');
+                }
+
+                const notificationLabel = data.notification?.sent
+                    ? ' y se envió la notificación por correo'
+                    : '';
+                message.textContent = `Expedición exitosa para ${allyState.aliado} / ${allyState.asesor}.`;
+                message.style.background = '#ecfdf5';
+                message.style.color = '#065f46';
+                closeAlliesOverlay();
+                await logoutAllyState();
+                showAlert(`${data.message || 'SOAT emitido correctamente'}${notificationLabel}`, 'success');
+            } catch (error) {
+                console.error('Error expidiendo:', error);
+                if (error.status === 401) {
+                    await logoutAllyState();
+                    openAlliesOverlay();
+                }
+                message.textContent = `La expedición automática falló para ${allyState.aliado} / ${allyState.asesor}. ${error.message || ''}`.trim();
+                message.style.background = '#fee2e2';
+                message.style.color = '#991b1b';
+                showAlert(error.message || 'No fue posible expedir el SOAT', 'error');
+            } finally {
+                if (triggerButton) {
+                    triggerButton.disabled = false;
+                    triggerButton.innerHTML = originalMarkup;
+                }
+            }
+        }
+
+        async function handleAliadosLogin(event) {
+            event.preventDefault();
+
+            const user = document.getElementById('alliesUser').value.trim();
+            const password = document.getElementById('alliesPassword').value;
+            const message = document.getElementById('alliesLoginMessage');
+            try {
+                const loginResponse = await makeRequest(`${PROXY_URL}/auth/login`, {
+                    method: 'POST',
+                    body: JSON.stringify({ user, password })
+                });
+
+                allyState.authenticated = true;
+                allyState.user = loginResponse.user || user;
+                allyState.sessionToken = loginResponse.token;
+                allyState.sessionExpiresAt = Number(loginResponse.expiresAt || 0);
+                saveAllyState();
+
+                message.textContent = 'Acceso correcto. Ahora selecciona aliado y asesor.';
+                message.style.background = '#ecfdf5';
+                message.style.color = '#065f46';
+                document.getElementById('allySelect').value = allyState.aliado || '';
+                document.getElementById('advisorSelect').value = allyState.asesor || '';
+                showAlliesStep('alliesSelectionStep');
+                updateAllyStatus();
+            } catch (error) {
+                message.textContent = error.message || 'Credenciales inválidas. Verifica el usuario y la contraseña del canal de aliados.';
+                message.style.background = '#fee2e2';
+                message.style.color = '#991b1b';
+            }
+        }
+
+        async function handleAliadosSelection(event) {
+            event.preventDefault();
+
+            const aliado = document.getElementById('allySelect').value;
+            const asesor = document.getElementById('advisorSelect').value;
+            const message = document.getElementById('selectionMessage');
+            const submitButton = event.target.querySelector('button[type="submit"]');
+
+            if (!aliado || !asesor) {
+                message.textContent = 'Debes elegir un aliado y un asesor.';
+                message.style.background = '#fee2e2';
+                message.style.color = '#991b1b';
+                return;
+            }
+
+            allyState.aliado = aliado;
+            allyState.asesor = asesor;
+            allyState.authenticated = true;
+            saveAllyState();
+            updateAllyStatus();
+
+            if (!lastQuoteData) {
+                message.textContent = `Selección guardada: ${aliado} / ${asesor}. Ahora cotiza para expedir automáticamente.`;
+                message.style.background = '#ecfdf5';
+                message.style.color = '#065f46';
+                closeAlliesOverlay();
+                showAlert(`Venta asignada a ${aliado} / ${asesor}`, 'success');
+                return;
+            }
+
+            await expedirSOATAutomatically(submitButton);
+        }
+
+        async function handleQuoteSubmit(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const spinner = submitBtn.querySelector('.spinner');
+            document.getElementById('results').style.display = 'none';
+
+            submitBtn.disabled = true;
+            spinner.style.display = 'inline-block';
+
+            const formData = {
+                placa: form.placa.value.toUpperCase(),
+                documentType: form.documentType.value,
+                documentNumber: form.documentNumber.value
+            };
+
+            showDebugInfo(`Enviando solicitud a: ${PROXY_URL}/cotizar`, formData);
+
+            try {
+                const data = await makeRequest(`${PROXY_URL}/cotizar`, {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+
+                displayResults(data);
+                showAlert('Cotización realizada exitosamente.', 'success');
+            } catch (error) {
+                let errorMessage = 'Error al procesar la cotización';
+
+                if (error.name === 'TypeError' && String(error.message).includes('fetch')) {
+                    errorMessage = 'Error de conexión. Por favor intenta nuevamente.';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+
+                showAlert(errorMessage, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadAllyState();
+            updateAllyStatus();
+
+            document.getElementById('cotizadorForm').addEventListener('submit', handleQuoteSubmit);
+            document.getElementById('captureBtn').addEventListener('click', captureScreen);
+            document.getElementById('expedirBtn').addEventListener('click', openTransferPage);
+            document.getElementById('aliadosBtn').addEventListener('click', openAlliesOverlay);
+            document.getElementById('closeAlliesBtn').addEventListener('click', closeAlliesOverlay);
+            document.getElementById('alliesLoginForm').addEventListener('submit', handleAliadosLogin);
+            document.getElementById('alliesSelectionForm').addEventListener('submit', handleAliadosSelection);
+
+            document.getElementById('placa').addEventListener('input', event => {
+                event.target.value = event.target.value.toUpperCase();
+            });
+
+            document.getElementById('alliesOverlay').addEventListener('click', event => {
+                if (event.target.id === 'alliesOverlay') {
+                    closeAlliesOverlay();
+                }
+            });
+
+            await fetchConfig();
         });
     </script>
 </body>

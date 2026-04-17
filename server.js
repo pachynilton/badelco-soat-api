@@ -4,7 +4,11 @@ const rateLimit = require('express-rate-limit');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const nodemailer = require('nodemailer');
+const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const xlsx = require('xlsx');
 require('dotenv').config();
 
 const app = express();
@@ -43,42 +47,544 @@ const cotizacionLimiter = rateLimit({
 
 app.use('/api/cotizar', cotizacionLimiter);
 
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 8,
+    message: 'Demasiados intentos de inicio de sesión, intenta más tarde',
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+app.use('/api/auth/login', authLimiter);
+
 // Middleware para logs de seguridad
 app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
     next();
 });
 
-app.use(cors({ 
-    origin: [
-        'https://badelco-soat-api-production.up.railway.app',
-        'http://localhost:3000',
-        'http://localhost:5500',
-        'http://localhost:5501'
-    ], 
-    credentials: true 
+const defaultAllowedOrigins = [
+    'https://badelco-soat-api-production.up.railway.app',
+    'http://localhost:3000',
+    'http://localhost:5500',
+    'http://localhost:5501'
+];
+const envAllowedOrigins = String(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...envAllowedOrigins])];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Permite herramientas locales y llamadas server-to-server sin cabecera Origin.
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        const isLocalhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+        if (isLocalhostOrigin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error('Origen no permitido por CORS'));
+    },
+    credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static('public'));
 
 
+const WORKBOOK_PATH = path.join(__dirname, 'Listado-Placas.xlsx');
+const LOCAL_NOTIFICATIONS_DIR = path.join(__dirname, 'local-notifications');
+const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || 'info@badelco.co';
+const SAME_API_BASE_URL = ensureTrailingSlash(process.env.SAME_API_BASE_URL || process.env.API_BASE_URL || 'https://pagoalafija.co/api/public/');
+const SAME_API_KEY = process.env.SAME_API_KEY || process.env.API_KEY || '';
+const SAME_SECRET_KEY = process.env.SAME_SECRET_KEY || process.env.SECRET_KEY || '';
+const SAME_COD_PRODUCTO = Number(process.env.SAME_COD_PRODUCTO || 63);
+const SAME_IND_PRUEBA = String(process.env.SAME_IND_PRUEBA || '1');
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || 'false') === 'true';
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+
+const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
+const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
+const ALLY_LOGIN_USER = String(process.env.ALLY_LOGIN_USER || '').trim();
+const ALLY_LOGIN_PASSWORD_HASH = String(process.env.ALLY_LOGIN_PASSWORD_HASH || '').trim();
+const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES || 30);
+const ENABLE_DEBUG_ENDPOINTS = String(process.env.ENABLE_DEBUG_ENDPOINTS || 'false') === 'true';
+const allySessions = new Map();
+
+const plateCatalog = loadPlateCatalog();
+let sameAuthToken = '';
+let sameTokenGeneratedAt = 0;
+
+
 // Credenciales correctas del API
-const API_BASE_URL = 'https://pagoalafija.co/api/public/';
-const API_KEY = '4aeaa7cc5f23610d9a1b3bb303389262';
-const SECRET_KEY = '$2y$10$eYX8JTjeVoiHU0Bb2/k8weXnj9oabIPAhD3rYA5qlbImtb1lD4T/a';
-const AUTH_TOKEN = '55a9d4ce4c878c2cddfdedf46de4414bbd08e3cf8aa7699de486c4c622f0cf3e';
+const API_BASE_URL = ensureTrailingSlash(process.env.API_BASE_URL || 'https://pagoalafija.co/api/public/');
+const API_KEY = String(process.env.API_KEY || '').trim();
+const SECRET_KEY = String(process.env.SECRET_KEY || '').trim();
+const AUTH_TOKEN = String(process.env.AUTHTOKEN || process.env.AUTH_TOKEN || '').trim();
 const COD_PRODUCTO = 63;
+const LEGACY_API_BASE_CANDIDATES = Array.from(new Set([
+    API_BASE_URL,
+    'https://pagoalafija.co/api/public/',
+    'https://dev.same.com.co/api/public/'
+].map(ensureTrailingSlash)));
 
 // Variables para el token dinámico
 let currentToken = AUTH_TOKEN; // Empezar con el token fijo
 let tokenGeneratedAt = new Date();
 let isUsingFixedToken = true;
+let activeLegacyApiBaseUrl = LEGACY_API_BASE_CANDIDATES[0];
+
+function maskSecret(value, keepStart = 4, keepEnd = 2) {
+    const secret = String(value || '');
+    if (!secret) {
+        return '(vacío)';
+    }
+
+    if (secret.length <= keepStart + keepEnd) {
+        return `${secret[0]}***`;
+    }
+
+    return `${secret.slice(0, keepStart)}***${secret.slice(-keepEnd)}`;
+}
+
+function hashPasswordScrypt(password, salt) {
+    return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+function verifyPasswordScrypt(password, storedHash) {
+    if (!storedHash || !storedHash.includes(':')) {
+        return false;
+    }
+
+    const [salt, expectedHash] = storedHash.split(':');
+    if (!salt || !expectedHash) {
+        return false;
+    }
+
+    const actualHash = hashPasswordScrypt(password, salt);
+    const expectedBuffer = Buffer.from(expectedHash, 'hex');
+    const actualBuffer = Buffer.from(actualHash, 'hex');
+
+    if (expectedBuffer.length !== actualBuffer.length) {
+        return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function createAllySession(user) {
+    const token = crypto.randomBytes(48).toString('hex');
+    const now = Date.now();
+    const expiresAt = now + (SESSION_TTL_MINUTES * 60 * 1000);
+
+    allySessions.set(token, {
+        user,
+        createdAt: now,
+        expiresAt
+    });
+
+    return { token, expiresAt };
+}
+
+function getBearerToken(req) {
+    const authorizationHeader = String(req.headers.authorization || '').trim();
+    const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : '';
+}
+
+function cleanExpiredAllySessions() {
+    const now = Date.now();
+    for (const [token, session] of allySessions.entries()) {
+        if (session.expiresAt <= now) {
+            allySessions.delete(token);
+        }
+    }
+}
+
+function requireAlliesSession(req, res, next) {
+    const token = getBearerToken(req);
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            message: 'Sesión inválida o expirada. Debes iniciar sesión nuevamente.'
+        });
+    }
+
+    const session = allySessions.get(token);
+    if (!session || session.expiresAt <= Date.now()) {
+        allySessions.delete(token);
+        return res.status(401).json({
+            success: false,
+            message: 'Sesión inválida o expirada. Debes iniciar sesión nuevamente.'
+        });
+    }
+
+    req.allyToken = token;
+    req.allySession = session;
+    return next();
+}
+
+setInterval(cleanExpiredAllySessions, 10 * 60 * 1000).unref();
+
+if (!API_KEY || !SECRET_KEY) {
+    console.error('❌ ERROR: Debes configurar API_KEY y SECRET_KEY en variables de entorno');
+    if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+    }
+}
+
+if (!ALLY_LOGIN_USER || !ALLY_LOGIN_PASSWORD_HASH) {
+    console.warn('⚠️ Login de aliados no configurado. Define ALLY_LOGIN_USER y ALLY_LOGIN_PASSWORD_HASH');
+}
 
 console.log('🔧 Configuración con credenciales correctas:');
 console.log('- API URL:', API_BASE_URL);
-console.log('- API Key:', API_KEY);
-console.log('- Secret Key:', SECRET_KEY.substring(0, 20) + '***');
-console.log('- Auth Token:', AUTH_TOKEN.substring(0, 10) + '***');
+console.log('- API URL candidates:', LEGACY_API_BASE_CANDIDATES.join(' | '));
+console.log('- API Key:', maskSecret(API_KEY));
+console.log('- Secret Key:', maskSecret(SECRET_KEY));
+console.log('- Auth Token:', maskSecret(AUTH_TOKEN));
+console.log('- SAME API URL:', SAME_API_BASE_URL);
+console.log('- SAME API configurada:', Boolean(SAME_API_KEY && SAME_SECRET_KEY));
+console.log('- SMTP configurado:', Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS));
+console.log('- Login aliados configurado:', Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH));
+
+function ensureTrailingSlash(url) {
+    return url.endsWith('/') ? url : `${url}/`;
+}
+
+function normalizePlate(value = '') {
+    return String(value).trim().toUpperCase();
+}
+
+function loadPlateCatalog() {
+    try {
+        const workbook = xlsx.readFile(WORKBOOK_PATH);
+        const firstSheetName = workbook.SheetNames[0];
+        const rows = xlsx.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
+            defval: '',
+            raw: false
+        });
+
+        const map = new Map();
+        for (const row of rows) {
+            const placa = normalizePlate(row.Placa || row.placa);
+            if (!placa) {
+                continue;
+            }
+
+            map.set(placa, {
+                placa,
+                tarifa: String(row.Tarifa || row.tarifa || '').trim(),
+                portafolio: String(row.Portafolio || row.portafolio || '').trim()
+            });
+        }
+
+        console.log(`📘 Listado de placas cargado: ${map.size} registros`);
+        return map;
+    } catch (error) {
+        console.error('❌ No se pudo cargar Listado-Placas.xlsx:', error.message);
+        return new Map();
+    }
+}
+
+function getPlateMetadata(placa) {
+    return plateCatalog.get(normalizePlate(placa)) || null;
+}
+
+function isSameConfigured() {
+    return Boolean(SAME_API_KEY && SAME_SECRET_KEY);
+}
+
+function isSmtpConfigured() {
+    return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
+}
+
+function createTransporter() {
+    if (!isSmtpConfigured()) {
+        return null;
+    }
+
+    return nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_SECURE,
+        auth: {
+            user: SMTP_USER,
+            pass: SMTP_PASS
+        }
+    });
+}
+
+function saveLocalNotification(payload) {
+    try {
+        fs.mkdirSync(LOCAL_NOTIFICATIONS_DIR, { recursive: true });
+        const fileName = `notification-${Date.now()}.json`;
+        const filePath = path.join(LOCAL_NOTIFICATIONS_DIR, fileName);
+        fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf8');
+        return filePath;
+    } catch (error) {
+        console.error('❌ No se pudo guardar la notificación local:', error.message);
+        return null;
+    }
+}
+
+async function sendAliadoNotification({
+    aliado,
+    asesor,
+    placa,
+    documentType,
+    documentNumber,
+    issued,
+    policyNumber,
+    detail,
+    plateMetadata,
+    contact,
+    refVenta
+}) {
+    const timestamp = new Date();
+    const payload = {
+        fecha: timestamp.toLocaleString('es-CO'),
+        aliado,
+        asesor,
+        placa: normalizePlate(placa),
+        tipoDocumento: documentType || 'N/A',
+        documento: documentNumber,
+        emitido: issued ? 'Si' : 'No',
+        poliza: policyNumber || 'N/A',
+        detalle: detail || (issued ? 'Expedicion exitosa' : 'Expedicion fallida'),
+        referenciaVenta: refVenta || 'N/A',
+        tarifaPrueba: plateMetadata?.tarifa || 'N/A',
+        portafolio: plateMetadata?.portafolio || 'N/A',
+        contacto: {
+            email: contact?.Email || 'N/A',
+            celular: contact?.Cellular || 'N/A',
+            ciudad: contact?.CityId || 'N/A',
+            direccion: contact?.Address || 'N/A'
+        }
+    };
+
+    if (!isSmtpConfigured()) {
+        const localFile = saveLocalNotification(payload);
+        console.warn('⚠️ SMTP no configurado. Notificación pendiente:', payload);
+        return {
+            sent: false,
+            reason: 'SMTP no configurado',
+            channel: localFile ? 'local-file' : 'none',
+            localFile,
+            payload
+        };
+    }
+
+    const transporter = createTransporter();
+    await transporter.sendMail({
+        from: process.env.SMTP_FROM || SMTP_USER,
+        to: NOTIFICATION_EMAIL,
+        subject: `Badelco SOAT - ${issued ? 'EXPEDIDO' : 'FALLIDO'} - ${aliado} / ${asesor}`,
+        text: [
+            `Fecha: ${payload.fecha}`,
+            `Aliado: ${payload.aliado}`,
+            `Asesor: ${payload.asesor}`,
+            `Placa: ${payload.placa}`,
+            `Tipo documento: ${payload.tipoDocumento}`,
+            `Documento: ${payload.documento}`,
+            `Emitido: ${payload.emitido}`,
+            `Poliza: ${payload.poliza}`,
+            `Detalle: ${payload.detalle}`,
+            `Referencia venta: ${payload.referenciaVenta}`,
+            `Tarifa (Excel): ${payload.tarifaPrueba}`,
+            `Portafolio: ${payload.portafolio}`,
+            `Email contacto: ${payload.contacto.email}`,
+            `Celular contacto: ${payload.contacto.celular}`,
+            `Ciudad contacto: ${payload.contacto.ciudad}`,
+            `Direccion contacto: ${payload.contacto.direccion}`
+        ].join('\n'),
+        html: `
+            <h2>Badelco SOAT - Control de Expedicion</h2>
+            <p><strong>Fecha:</strong> ${payload.fecha}</p>
+            <p><strong>Aliado / Asesor:</strong> ${payload.aliado} / ${payload.asesor}</p>
+            <p><strong>Placa:</strong> ${payload.placa}</p>
+            <p><strong>Tipo/Documento:</strong> ${payload.tipoDocumento} ${payload.documento}</p>
+            <p><strong>Emitido:</strong> ${payload.emitido}</p>
+            <p><strong>Poliza:</strong> ${payload.poliza}</p>
+            <p><strong>Detalle:</strong> ${payload.detalle}</p>
+            <p><strong>Referencia:</strong> ${payload.referenciaVenta}</p>
+            <p><strong>Tarifa (Excel):</strong> ${payload.tarifaPrueba}</p>
+            <p><strong>Portafolio:</strong> ${payload.portafolio}</p>
+            <p><strong>Email contacto:</strong> ${payload.contacto.email}</p>
+            <p><strong>Celular contacto:</strong> ${payload.contacto.celular}</p>
+            <p><strong>Ciudad contacto:</strong> ${payload.contacto.ciudad}</p>
+            <p><strong>Direccion contacto:</strong> ${payload.contacto.direccion}</p>
+        `
+    });
+
+    return {
+        sent: true,
+        payload
+    };
+}
+
+async function getSameToken() {
+    if (!isSameConfigured()) {
+        throw new Error('Las variables SAME_API_KEY y SAME_SECRET_KEY no están configuradas');
+    }
+
+    const isTokenFresh = sameAuthToken && (Date.now() - sameTokenGeneratedAt) < 50 * 60 * 1000;
+    if (isTokenFresh) {
+        return sameAuthToken;
+    }
+
+    const response = await axios.get(`${SAME_API_BASE_URL}token`, {
+        headers: {
+            secretkey: SAME_SECRET_KEY,
+            apikey: SAME_API_KEY,
+            'Content-Type': 'application/json'
+        },
+        timeout: 15000
+    });
+
+    const token = response.data?.AuthToken;
+    if (!token) {
+        throw new Error('SAME no devolvió un AuthToken válido');
+    }
+
+    sameAuthToken = token;
+    sameTokenGeneratedAt = Date.now();
+    return sameAuthToken;
+}
+
+async function sameRequest(method, endpoint, { params, data } = {}) {
+    const token = await getSameToken();
+    return axios({
+        method,
+        url: `${SAME_API_BASE_URL}${endpoint}`,
+        params,
+        data,
+        timeout: 20000,
+        headers: {
+            AuthToken: token,
+            indPrueba: SAME_IND_PRUEBA,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+        }
+    });
+}
+
+function parseFormattedMoney(value) {
+    if (typeof value !== 'string') {
+        return Number(value) || 0;
+    }
+
+    const numericValue = value.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.');
+    return Number.parseFloat(numericValue) || 0;
+}
+
+function getTomorrowDate() {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    date.setHours(0, 0, 0, 0);
+    return date.toISOString();
+}
+
+function getNationalOperationCardId(plateMetadata) {
+    const tariff = String(plateMetadata?.tarifa || '').trim();
+    if (tariff.startsWith('920')) {
+        return 2;
+    }
+
+    if (tariff.startsWith('910')) {
+        return 1;
+    }
+
+    return null;
+}
+
+function buildContactFromTomador(tomador = {}, documentType, documentNumber) {
+    const address = tomador.Address || tomador.address || tomador.Direccion || tomador.direccion || tomador?.Address?.Description || tomador?.Address?.Address || '';
+    const cityId = tomador.CityId || tomador.cityId || tomador?.Address?.CityId || tomador?.Address?.cityId || '';
+    const stateId = tomador.StateId || tomador.stateId || tomador?.Address?.StateId || tomador?.Address?.stateId || '';
+    const email = tomador.Email || tomador.email || '';
+    const cellular = tomador.Cellular || tomador.cellular || tomador.Phone || tomador.phone || '';
+    const firstName = tomador.FirstName || tomador.firstName || tomador.Name || '';
+    const lastName = tomador.LastName || tomador.lastName || tomador.LastNames || '';
+
+    const contact = {
+        Address: String(address).trim(),
+        CityId: String(cityId).trim(),
+        StateId: String(stateId).trim(),
+        Cellular: String(cellular).trim(),
+        DocumentNumber: String(documentNumber).trim(),
+        DocumentTypeId: getSameDocumentTypeCode(documentType),
+        Email: String(email).trim(),
+        FirstName: String(firstName).trim(),
+        FirstName1: String(tomador.FirstName1 || tomador.firstName1 || '').trim(),
+        LastName: String(lastName).trim(),
+        LastName1: String(tomador.LastName1 || tomador.lastName1 || '').trim(),
+        Phone: String(tomador.Phone || tomador.phone || '').trim()
+    };
+
+    const missingFields = Object.entries(contact)
+        .filter(([key, value]) => ['Address', 'CityId', 'StateId', 'Cellular', 'Email', 'FirstName', 'LastName'].includes(key) && !value)
+        .map(([key]) => key);
+
+    return { contact, missingFields };
+}
+
+function extractSameVehicle(cotizacionData = {}) {
+    const data = cotizacionData.data || cotizacionData.vehiculo || cotizacionData.Vehicle || {};
+    return {
+        NumberPlate: data.NumberPlate || cotizacionData.NumberPlate,
+        VehicleYear: Number(data.VehicleYear || cotizacionData.VehicleYear || 0),
+        MotorNumber: String(data.MotorNumber || cotizacionData.MotorNumber || ''),
+        ChasisNumber: String(data.ChasisNumber || cotizacionData.ChasisNumber || ''),
+        Vin: String(data.Vin || cotizacionData.Vin || ''),
+        CylinderCapacity: Number(data.CylinderCapacity || cotizacionData.CylinderCapacity || 0),
+        LoadCapacity: Number(data.LoadCapacity || cotizacionData.LoadCapacity || 0),
+        PassengerCapacity: Number(data.PassengerCapacity || cotizacionData.PassengerCapacity || 0),
+        BrandId: Number(data.BrandId || cotizacionData.BrandId || 0),
+        VehicleLineId: Number(data.VehicleLineId || cotizacionData.VehicleLineId || 0),
+        VehicleDescription: String(data.VehicleDescription || cotizacionData.VehicleDescription || data.VehicleLineDescription || ''),
+        VehicleClassId: Number(data.VehicleClassId || cotizacionData.VehicleClassId || 0),
+        VehicleClassMinistryId: Number(data.VehicleClassMinistryId || cotizacionData.VehicleClassMinistryId || 0),
+        ServiceTypeId: Number(data.ServiceTypeId || cotizacionData.ServiceTypeId || 0),
+        VehicleBodyTypeId: Number(data.VehicleBodyTypeId || cotizacionData.VehicleBodyTypeId || 0)
+    };
+}
+
+function extractSameTariff(cotizacionData = {}, publicTariffData = null) {
+    const tarifa = publicTariffData?.tarifa || cotizacionData.data?.NewTariff || cotizacionData.tarifa || cotizacionData.Tarifa || cotizacionData.NewTariff || {};
+    return {
+        TariffCode: String(tarifa.TariffCode || tarifa.codTarifa || ''),
+        InsurancePremium: Number(tarifa.InsurancePremium || tarifa.valPrima || 0),
+        InsuranceTax: Number(tarifa.InsuranceTax || tarifa.valIva || 0),
+        InsuranceFine: Number(tarifa.InsuranceFine || tarifa.valRunt || 0),
+        Total: Number(tarifa.Total || tarifa.valTotal || parseFormattedMoney(tarifa.TotalFormatted) || 0),
+        TotalWithDiscountAmount: Number(tarifa.TotalWithDiscountAmount || tarifa.Total || tarifa.valTotal || parseFormattedMoney(tarifa.TotalWithDiscountAmountFormatted) || 0),
+        DiscountAmount: Number(tarifa.DiscountAmount || 0),
+        ElectricDiscount: Number(tarifa.ElectricDiscount || 0),
+        PercentageElectricDiscount: Number(tarifa.PercentageElectricDiscount || 0),
+        InsurancePremiumFormatted: tarifa.InsurancePremiumFormatted || '',
+        InsuranceTaxFormatted: tarifa.InsuranceTaxFormatted || '',
+        InsuranceFineFormatted: tarifa.InsuranceFineFormatted || '',
+        TotalFormatted: tarifa.TotalFormatted || '',
+        DiscountAmountFormatted: tarifa.DiscountAmountFormatted || '$0',
+        TotalWithDiscountAmountFormatted: tarifa.TotalWithDiscountAmountFormatted || tarifa.TotalFormatted || ''
+    };
+}
+
+function extractSameFromValidateDate(cotizacionData = {}) {
+    return (
+        cotizacionData.data?.Expiration?.FromValidateDate ||
+        cotizacionData.Expiration?.FromValidateDate ||
+        cotizacionData.FromValidateDate ||
+        getTomorrowDate()
+    );
+}
 
 // Función para generar nuevo token usando API_KEY y SECRET_KEY
 async function generateNewToken() {
@@ -93,68 +599,72 @@ async function generateNewToken() {
             'login'
         ];
         
-        for (const endpoint of tokenEndpoints) {
-            const tokenUrl = API_BASE_URL + endpoint;
-            console.log(`🔄 Probando endpoint: ${tokenUrl}`);
-            
-            try {
-                // Método GET con headers
-                console.log('   Método: GET con headers');
-                let response = await axios.get(tokenUrl, {
-                    headers: {
-                        'secretkey': SECRET_KEY,
-                        'apikey': API_KEY,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 10000,
-                    validateStatus: () => true
-                });
+        for (const baseUrl of LEGACY_API_BASE_CANDIDATES) {
+            for (const endpoint of tokenEndpoints) {
+                const tokenUrl = baseUrl + endpoint;
+                console.log(`🔄 Probando endpoint: ${tokenUrl}`);
                 
-                console.log(`   Status: ${response.status}`);
-                
-                if (response.status === 200 && response.data) {
-                    console.log('   Respuesta:', JSON.stringify(response.data, null, 2));
+                try {
+                    // Método GET con headers
+                    console.log('   Método: GET con headers');
+                    let response = await axios.get(tokenUrl, {
+                        headers: {
+                            'secretkey': SECRET_KEY,
+                            'apikey': API_KEY,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: 10000,
+                        validateStatus: () => true
+                    });
                     
-                    const token = response.data.AuthToken || response.data.authToken || response.data.token;
-                    if (token) {
-                        console.log('✅ Token generado exitosamente con GET');
-                        currentToken = token;
-                        tokenGeneratedAt = new Date();
-                        isUsingFixedToken = false;
-                        return token;
-                    }
-                }
-                
-                // Método POST con body
-                console.log('   Método: POST con body');
-                response = await axios.post(tokenUrl, {
-                    secretkey: SECRET_KEY,
-                    apikey: API_KEY
-                }, {
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 10000,
-                    validateStatus: () => true
-                });
-                
-                console.log(`   Status: ${response.status}`);
-                
-                if (response.status === 200 && response.data) {
-                    console.log('   Respuesta:', JSON.stringify(response.data, null, 2));
+                    console.log(`   Status: ${response.status}`);
                     
-                    const token = response.data.AuthToken || response.data.authToken || response.data.token;
-                    if (token) {
-                        console.log('✅ Token generado exitosamente con POST');
-                        currentToken = token;
-                        tokenGeneratedAt = new Date();
-                        isUsingFixedToken = false;
-                        return token;
+                    if (response.status === 200 && response.data) {
+                        console.log('   Respuesta:', JSON.stringify(response.data, null, 2));
+                        
+                        const token = response.data.AuthToken || response.data.authToken || response.data.token;
+                        if (token) {
+                            console.log('✅ Token generado exitosamente con GET');
+                            currentToken = token;
+                            tokenGeneratedAt = new Date();
+                            isUsingFixedToken = false;
+                            activeLegacyApiBaseUrl = baseUrl;
+                            return token;
+                        }
                     }
+                    
+                    // Método POST con body
+                    console.log('   Método: POST con body');
+                    response = await axios.post(tokenUrl, {
+                        secretkey: SECRET_KEY,
+                        apikey: API_KEY
+                    }, {
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: 10000,
+                        validateStatus: () => true
+                    });
+                    
+                    console.log(`   Status: ${response.status}`);
+                    
+                    if (response.status === 200 && response.data) {
+                        console.log('   Respuesta:', JSON.stringify(response.data, null, 2));
+                        
+                        const token = response.data.AuthToken || response.data.authToken || response.data.token;
+                        if (token) {
+                            console.log('✅ Token generado exitosamente con POST');
+                            currentToken = token;
+                            tokenGeneratedAt = new Date();
+                            isUsingFixedToken = false;
+                            activeLegacyApiBaseUrl = baseUrl;
+                            return token;
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.log(`   Error: ${error.message}`);
                 }
-                
-            } catch (error) {
-                console.log(`   Error: ${error.message}`);
             }
         }
         
@@ -198,10 +708,10 @@ app.post('/api/cotizar', async (req, res) => {
         console.log('📋 Datos recibidos:', { placa, documentType, documentNumber });
 
         // Obtener token válido
-        const token = await getValidToken();
+        await getValidToken();
 
         // URL y parámetros para cotización
-        const cotizacionUrl = `${API_BASE_URL}soat`;
+        let cotizacionUrl = `${activeLegacyApiBaseUrl}soat`;
         const params = {
             numPlaca: placa.toUpperCase(),
             codProducto: COD_PRODUCTO,
@@ -211,17 +721,17 @@ app.post('/api/cotizar', async (req, res) => {
 
         console.log('📡 Cotización URL:', cotizacionUrl);
         console.log('📡 Parámetros:', params);
-        console.log('🔑 Token:', token.substring(0, 30) + '***');
+        console.log('🔑 Token:', currentToken.substring(0, 30) + '***');
         console.log('🔑 Tipo token:', isUsingFixedToken ? 'FIJO' : 'GENERADO');
 
         // Realizar cotización con múltiples estrategias de headers
         const headerStrategies = [
-            { name: 'Auth-Token', headers: { 'Auth-Token': token } },
-            { name: 'Authorization Bearer', headers: { 'Authorization': `Bearer ${token}` } },
-            { name: 'AuthToken', headers: { 'AuthToken': token } },
-            { name: 'Token', headers: { 'Token': token } },
-            { name: 'X-Auth-Token', headers: { 'X-Auth-Token': token } },
-            { name: 'X-Token', headers: { 'X-Token': token } }
+            { name: 'AuthToken', headerName: 'AuthToken', formatter: t => t },
+            { name: 'Auth-Token', headerName: 'Auth-Token', formatter: t => t },
+            { name: 'Authorization Bearer', headerName: 'Authorization', formatter: t => `Bearer ${t}` },
+            { name: 'Token', headerName: 'Token', formatter: t => t },
+            { name: 'X-Auth-Token', headerName: 'X-Auth-Token', formatter: t => t },
+            { name: 'X-Token', headerName: 'X-Token', formatter: t => t }
         ];
 
         let cotizacionResponse;
@@ -230,10 +740,15 @@ app.post('/api/cotizar', async (req, res) => {
         for (const strategy of headerStrategies) {
             try {
                 console.log(`🔄 Probando strategy: ${strategy.name}`);
+                cotizacionUrl = `${activeLegacyApiBaseUrl}soat`;
+                const tokenToUse = currentToken;
+                const authHeaders = {
+                    [strategy.headerName]: strategy.formatter(tokenToUse)
+                };
                 
                 cotizacionResponse = await axios.get(cotizacionUrl, {
                     headers: {
-                        ...strategy.headers,
+                        ...authHeaders,
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
@@ -259,13 +774,16 @@ app.post('/api/cotizar', async (req, res) => {
                 if (error.response?.status === 401 && isUsingFixedToken) {
                     console.log('🔄 Error 401 con token fijo, generando nuevo token...');
                     try {
-                        const newToken = await generateNewToken();
-                        strategy.headers[Object.keys(strategy.headers)[0]] = newToken;
+                        await generateNewToken();
+                        cotizacionUrl = `${activeLegacyApiBaseUrl}soat`;
+                        const authHeadersWithNewToken = {
+                            [strategy.headerName]: strategy.formatter(currentToken)
+                        };
                         
                         // Reintentar con nuevo token
                         cotizacionResponse = await axios.get(cotizacionUrl, {
                             headers: {
-                                ...strategy.headers,
+                                ...authHeadersWithNewToken,
                                 'Content-Type': 'application/json',
                                 'Accept': 'application/json'
                             },
@@ -302,6 +820,7 @@ app.post('/api/cotizar', async (req, res) => {
         const precio = extractPrice(cotizacionData);
         const vehicleInfo = extractVehicleInfo(cotizacionData);
         const dates = extractDates(cotizacionData);
+        const plateMetadata = getPlateMetadata(placa);
 
         console.log('💰 Precio extraído:', precio);
         console.log('🚗 Info vehículo:', vehicleInfo);
@@ -349,8 +868,10 @@ app.post('/api/cotizar', async (req, res) => {
                 timestamp: new Date().toISOString(),
                 numeroReferencia: `SOAT-${placa.toUpperCase()}-${Date.now()}`,
                 tokenType: isUsingFixedToken ? 'FIJO' : 'GENERADO',
-                tokenAge: Math.floor((new Date() - tokenGeneratedAt) / 60000) + ' minutos'
+                tokenAge: Math.floor((new Date() - tokenGeneratedAt) / 60000) + ' minutos',
+                plateListed: Boolean(plateMetadata)
             },
+            plateMetadata,
             // Debug completo
             debug: {
                 originalResponse: cotizacionData,
@@ -379,7 +900,7 @@ app.post('/api/cotizar', async (req, res) => {
                     tokenType: isUsingFixedToken ? 'FIJO' : 'GENERADO',
                     tokenAge: Math.floor((new Date() - tokenGeneratedAt) / 60000) + ' min'
                 },
-                url: `${API_BASE_URL}soat`,
+                url: `${activeLegacyApiBaseUrl}soat`,
                 params: {
                     numPlaca: req.body.placa?.toUpperCase(),
                     codProducto: COD_PRODUCTO,
@@ -391,8 +912,284 @@ app.post('/api/cotizar', async (req, res) => {
     }
 });
 
+app.get('/api/config', (req, res) => {
+    res.json({
+        success: true,
+        sameConfigured: isSameConfigured(),
+        smtpConfigured: isSmtpConfigured(),
+        allyAuthConfigured: Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH),
+        sessionTtlMinutes: SESSION_TTL_MINUTES,
+        notificationEmail: NOTIFICATION_EMAIL,
+        allyOptions: ALLY_OPTIONS,
+        advisorOptions: ADVISOR_OPTIONS,
+        listedPlates: plateCatalog.size
+    });
+});
+
+app.post('/api/auth/login', (req, res) => {
+    const user = String(req.body?.user || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!user || !password) {
+        return res.status(400).json({
+            success: false,
+            message: 'Usuario y contraseña son obligatorios'
+        });
+    }
+
+    if (!ALLY_LOGIN_USER || !ALLY_LOGIN_PASSWORD_HASH) {
+        return res.status(503).json({
+            success: false,
+            message: 'El inicio de sesión no está configurado en el servidor'
+        });
+    }
+
+    const userValid = user === ALLY_LOGIN_USER;
+    const passwordValid = verifyPasswordScrypt(password, ALLY_LOGIN_PASSWORD_HASH);
+
+    if (!userValid || !passwordValid) {
+        return res.status(401).json({
+            success: false,
+            message: 'Credenciales inválidas'
+        });
+    }
+
+    const { token, expiresAt } = createAllySession(user);
+
+    return res.json({
+        success: true,
+        token,
+        tokenType: 'Bearer',
+        expiresAt,
+        user
+    });
+});
+
+app.post('/api/auth/logout', requireAlliesSession, (req, res) => {
+    allySessions.delete(req.allyToken);
+    return res.json({ success: true });
+});
+
+app.get('/api/plates/:placa', (req, res) => {
+    const placa = normalizePlate(req.params.placa);
+    const plateMetadata = getPlateMetadata(placa);
+
+    res.json({
+        success: true,
+        placa,
+        listed: Boolean(plateMetadata),
+        plateMetadata
+    });
+});
+
+app.post('/api/expedir', requireAlliesSession, async (req, res) => {
+    try {
+        const { placa, documentType, documentNumber, aliado, asesor } = req.body;
+        const normalizedPlate = normalizePlate(placa);
+        const sendFailedNotification = async (detail, contact = null, plateMetadata = null, refVenta = '') => sendAliadoNotification({
+            aliado,
+            asesor,
+            placa: normalizedPlate,
+            documentType,
+            documentNumber,
+            issued: false,
+            policyNumber: '',
+            detail,
+            contact,
+            plateMetadata,
+            refVenta
+        });
+
+        if (!normalizedPlate || !documentType || !documentNumber || !aliado || !asesor) {
+            return res.status(400).json({
+                success: false,
+                message: 'Faltan datos requeridos para la expedición'
+            });
+        }
+
+        if (!ALLY_OPTIONS.includes(aliado) || !ADVISOR_OPTIONS.includes(asesor)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Aliado o asesor inválido'
+            });
+        }
+
+        const plateMetadata = getPlateMetadata(normalizedPlate);
+        if (!plateMetadata) {
+            const notification = await sendFailedNotification('La placa no se encuentra en el listado de pruebas');
+            return res.status(404).json({
+                success: false,
+                message: 'La placa no se encuentra en el listado de pruebas',
+                placa: normalizedPlate,
+                notification
+            });
+        }
+
+        if (!isSameConfigured()) {
+            const notification = await sendAliadoNotification({
+                aliado,
+                asesor,
+                placa: normalizedPlate,
+                documentType,
+                documentNumber,
+                issued: false,
+                policyNumber: '',
+                detail: 'La expedición SAME no está configurada',
+                plateMetadata
+            });
+
+            return res.status(503).json({
+                success: false,
+                message: 'La expedición SAME está lista en código, pero faltan SAME_API_KEY y SAME_SECRET_KEY en Railway',
+                sameConfigured: false,
+                notification,
+                plateMetadata
+            });
+        }
+
+        const quoteResponse = await sameRequest('get', 'soat', {
+            params: {
+                numPlaca: normalizedPlate,
+                codProducto: SAME_COD_PRODUCTO,
+                codTipdoc: getSameDocumentTypeCode(documentType),
+                numDocumento: documentNumber
+            }
+        });
+
+        const quoteData = quoteResponse.data;
+        const vehicle = extractSameVehicle(quoteData);
+        let publicTariffData = null;
+
+        if (vehicle.ServiceTypeId === 2) {
+            const nationalOperationCardId = getNationalOperationCardId(plateMetadata);
+            if (!nationalOperationCardId) {
+                const notification = await sendFailedNotification('No fue posible inferir el tipo de operación del vehículo público');
+                return res.status(422).json({
+                    success: false,
+                    message: 'La placa es de servicio público y no fue posible inferir el tipo de operación desde el archivo de placas',
+                    plateMetadata,
+                    notification
+                });
+            }
+
+            const publicoResponse = await sameRequest('get', 'publico', {
+                params: {
+                    NumberPlate: vehicle.NumberPlate || normalizedPlate,
+                    NationalOperationCardId: nationalOperationCardId,
+                    VehicleClassMinistryId: vehicle.VehicleClassMinistryId,
+                    VehicleYear: vehicle.VehicleYear,
+                    CylinderCapacity: vehicle.CylinderCapacity,
+                    PassengerCapacity: vehicle.PassengerCapacity,
+                    LoadCapacity: vehicle.LoadCapacity,
+                    VehicleClassId: vehicle.VehicleClassId
+                }
+            });
+
+            publicTariffData = publicoResponse.data;
+        }
+
+        const tomadorResponse = await sameRequest('get', 'tomador', {
+            params: {
+                numDocumento: documentNumber,
+                codTipdoc: getSameDocumentTypeCode(documentType)
+            }
+        });
+
+        const { contact, missingFields } = buildContactFromTomador(tomadorResponse.data?.tomador || {}, documentType, documentNumber);
+        if (missingFields.length > 0) {
+            const notification = await sendFailedNotification(`Faltan datos del tomador en SAME: ${missingFields.join(', ')}`, contact, plateMetadata);
+            return res.status(422).json({
+                success: false,
+                message: `No es posible emitir porque faltan datos del tomador en SAME: ${missingFields.join(', ')}`,
+                missingFields,
+                plateMetadata,
+                notification
+            });
+        }
+
+        const payload = {
+            codProducto: SAME_COD_PRODUCTO,
+            refVenta: `BADELCO-${normalizedPlate}-${Date.now()}`,
+            numPlaca: normalizedPlate,
+            Contact: contact,
+            Tarifa: extractSameTariff(quoteData, publicTariffData),
+            Vehicle: vehicle,
+            FromValidateDate: extractSameFromValidateDate(quoteData),
+            RegimenTypeId: 2,
+            Rutid: documentType === 'NIT' ? 3 : 5,
+            numCelular: contact.Cellular,
+            desCorreo: contact.Email
+        };
+
+        const validationResponse = await sameRequest('post', 'valida', { data: payload });
+        if (!validationResponse.data?.status) {
+            const notification = await sendFailedNotification(
+                validationResponse.data?.message || 'SAME rechazó la validación de emisión',
+                contact,
+                plateMetadata,
+                payload.refVenta
+            );
+            return res.status(422).json({
+                success: false,
+                message: validationResponse.data?.message || 'SAME rechazó la validación de emisión',
+                validation: validationResponse.data,
+                notification
+            });
+        }
+
+        const issueResponse = await sameRequest('post', 'soat', { data: payload });
+        const policyNumber = issueResponse.data?.soat?.numPoliza || issueResponse.data?.soat?.InsurancePolicyNumber || '';
+        const notification = await sendAliadoNotification({
+            aliado,
+            asesor,
+            placa: normalizedPlate,
+            documentType,
+            documentNumber,
+            issued: Boolean(issueResponse.data?.status),
+            policyNumber,
+            detail: issueResponse.data?.message || 'Expedición exitosa',
+            plateMetadata,
+            contact,
+            refVenta: payload.refVenta
+        });
+
+        res.json({
+            success: true,
+            message: issueResponse.data?.message || 'SOAT emitido correctamente',
+            requestedBy: req.allySession.user,
+            plateMetadata,
+            notification,
+            emission: issueResponse.data
+        });
+    } catch (error) {
+        console.error('❌ Error en expedición SAME:', error.response?.data || error.message);
+        const notification = (req.body?.aliado && req.body?.asesor && req.body?.placa && req.body?.documentNumber)
+            ? await sendAliadoNotification({
+                aliado: req.body.aliado,
+                asesor: req.body.asesor,
+                placa: req.body.placa,
+                documentType: req.body.documentType,
+                documentNumber: req.body.documentNumber,
+                issued: false,
+                policyNumber: '',
+                detail: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT'
+            })
+            : null;
+        res.status(error.response?.status || 500).json({
+            success: false,
+            message: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT',
+            error: error.response?.data || null,
+            notification
+        });
+    }
+});
+
 // Test endpoint simple
 app.get('/api/test', async (req, res) => {
+    if (!ENABLE_DEBUG_ENDPOINTS) {
+        return res.status(404).json({ success: false, message: 'Not found' });
+    }
+
     try {
         console.log('\n🧪 TEST SIMPLE CON CREDENCIALES CORRECTAS\n');
         
@@ -458,6 +1255,10 @@ app.get('/api/test', async (req, res) => {
 
 // Test de generación de token
 app.post('/api/test-generate-token', async (req, res) => {
+    if (!ENABLE_DEBUG_ENDPOINTS) {
+        return res.status(404).json({ success: false, message: 'Not found' });
+    }
+
     try {
         console.log('\n🧪 TEST DE GENERACIÓN DE TOKEN\n');
         
@@ -467,8 +1268,7 @@ app.post('/api/test-generate-token', async (req, res) => {
             success: true,
             message: 'Test de generación completado',
             newToken: newToken.substring(0, 30) + '...',
-            tokenType: isUsingFixedToken ? 'FIJO (no se pudo generar)' : 'GENERADO',
-            fullToken: newToken // Solo para debug
+            tokenType: isUsingFixedToken ? 'FIJO (no se pudo generar)' : 'GENERADO'
         });
         
     } catch (error) {
@@ -536,20 +1336,21 @@ function getDocumentTypeCode(documentType) {
     return codes[documentType] || 1;
 }
 
+function getSameDocumentTypeCode(documentType) {
+    const codes = { 'CC': 1, 'CE': 2, 'NIT': 3, 'TI': 4, 'PA': 5 };
+    return codes[documentType] || 1;
+}
+
 // Info endpoint
 app.get('/api/info', (req, res) => {
     res.json({
         status: 'READY',
         server: 'Badelco SOAT API - Credenciales Correctas',
         timestamp: new Date().toISOString(),
-        credentials: {
-            apiKey: API_KEY.substring(0, 10) + '...',
-            secretKey: SECRET_KEY.substring(0, 20) + '...',
-            authToken: AUTH_TOKEN.substring(0, 30) + '...',
-            configured: true
-        },
+        credentialsConfigured: Boolean(API_KEY && SECRET_KEY),
+        allyAuthConfigured: Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH),
         token: {
-            current: currentToken.substring(0, 30) + '...',
+            hasCurrentToken: Boolean(currentToken),
             type: isUsingFixedToken ? 'FIJO' : 'GENERADO',
             age: Math.floor((new Date() - tokenGeneratedAt) / 60000) + ' minutos'
         },
@@ -567,9 +1368,9 @@ app.get('/api/soat', async (req, res) => {
     try {
         const token = await getValidToken();
         
-        const response = await axios.get(`${API_BASE_URL}/soat`, {
+        const response = await axios.get(`${activeLegacyApiBaseUrl}soat`, {
             headers: {
-                'Auth-Token': token,
+                'AuthToken': token,
                 'Content-Type': 'application/json'
             },
             params: req.query,
