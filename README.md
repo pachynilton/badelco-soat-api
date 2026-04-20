@@ -29,6 +29,7 @@ Copiar desde `.env.example` y cargar en Railway Variables:
 - `SAME_SECRET_KEY=...`
 - `SAME_COD_PRODUCTO=63`
 - `SAME_IND_PRUEBA=1`
+- `REQUIRE_LISTED_PLATES=true` (en pruebas) o `false` (en produccion)
 - `ALLY_LOGIN_USER=...`
 - `ALLY_LOGIN_PASSWORD_HASH=...`
 - `SESSION_TTL_MINUTES=30`

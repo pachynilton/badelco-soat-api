@@ -103,6 +103,7 @@ const SAME_API_KEY = process.env.SAME_API_KEY || process.env.API_KEY || '';
 const SAME_SECRET_KEY = process.env.SAME_SECRET_KEY || process.env.SECRET_KEY || '';
 const SAME_COD_PRODUCTO = Number(process.env.SAME_COD_PRODUCTO || 63);
 const SAME_IND_PRUEBA = String(process.env.SAME_IND_PRUEBA || '1');
+const REQUIRE_LISTED_PLATES = String(process.env.REQUIRE_LISTED_PLATES || (SAME_IND_PRUEBA === '1' ? 'true' : 'false')) === 'true';
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || 'false') === 'true';
@@ -946,6 +947,7 @@ app.get('/api/config', (req, res) => {
     res.json({
         success: true,
         sameConfigured: isSameConfigured(),
+        requireListedPlates: REQUIRE_LISTED_PLATES,
         smtpConfigured: isSmtpConfigured(),
         allyAuthConfigured: Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH),
         sessionTtlMinutes: SESSION_TTL_MINUTES,
@@ -1045,7 +1047,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
         }
 
         const plateMetadata = getPlateMetadata(normalizedPlate);
-        if (!plateMetadata) {
+        if (REQUIRE_LISTED_PLATES && !plateMetadata) {
             const notification = await sendFailedNotification('La placa no se encuentra en el listado de pruebas');
             return res.status(404).json({
                 success: false,

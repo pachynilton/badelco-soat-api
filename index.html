@@ -1402,7 +1402,9 @@
 
                 const notificationLabel = data.notification?.sent
                     ? ' y se envió la notificación por correo'
-                    : '';
+                    : data.notification
+                        ? ` (notificación pendiente: ${data.notification.reason || 'sin detalle'})`
+                        : '';
                 message.textContent = `Expedición exitosa para ${allyState.aliado} / ${allyState.asesor}.`;
                 message.style.background = '#ecfdf5';
                 message.style.color = '#065f46';
@@ -1415,10 +1417,14 @@
                     await logoutAllyState();
                     openAlliesOverlay();
                 }
+                const notification = error.payload?.notification;
+                const notificationHint = notification && !notification.sent
+                    ? ` Notificación pendiente: ${notification.reason || 'sin detalle'}.`
+                    : '';
                 message.textContent = `La expedición automática falló para ${allyState.aliado} / ${allyState.asesor}. ${error.message || ''}`.trim();
                 message.style.background = '#fee2e2';
                 message.style.color = '#991b1b';
-                showAlert(error.message || 'No fue posible expedir el SOAT', 'error');
+                showAlert(`${error.message || 'No fue posible expedir el SOAT'}${notificationHint}`, 'error');
             } finally {
                 if (triggerButton) {
                     triggerButton.disabled = false;
