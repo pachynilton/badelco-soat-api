@@ -522,6 +522,32 @@ function getTomorrowDate() {
     return date.toISOString();
 }
 
+function normalizeSameFromValidateDate(value) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const maxAllowed = new Date(today);
+    maxAllowed.setDate(maxAllowed.getDate() + 30);
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return getTomorrowDate();
+    }
+
+    parsed.setHours(0, 0, 0, 0);
+
+    if (parsed > maxAllowed) {
+        console.warn('⚠️ SAME devolvió FromValidateDate fuera de rango (>30 días). Se ajusta al máximo permitido.');
+        return maxAllowed.toISOString();
+    }
+
+    if (parsed < today) {
+        return getTomorrowDate();
+    }
+
+    return parsed.toISOString();
+}
+
 function getNationalOperationCardId(plateMetadata) {
     const tariff = String(plateMetadata?.tarifa || '').trim();
     if (tariff.startsWith('920')) {
@@ -609,12 +635,14 @@ function extractSameTariff(cotizacionData = {}, publicTariffData = null) {
 }
 
 function extractSameFromValidateDate(cotizacionData = {}) {
-    return (
+    const fromValidateDate = (
         cotizacionData.data?.Expiration?.FromValidateDate ||
         cotizacionData.Expiration?.FromValidateDate ||
         cotizacionData.FromValidateDate ||
         getTomorrowDate()
     );
+
+    return normalizeSameFromValidateDate(fromValidateDate);
 }
 
 // Función para generar nuevo token usando API_KEY y SECRET_KEY
