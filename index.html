@@ -756,6 +756,28 @@
                         >
                     </div>
 
+                    <div class="form-group">
+                        <label class="form-label" for="email">Email (respaldo para expedición)</label>
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            class="form-input"
+                            placeholder="correo@dominio.com"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="telefono">Celular (respaldo para expedición)</label>
+                        <input
+                            type="tel"
+                            id="telefono"
+                            name="telefono"
+                            class="form-input"
+                            placeholder="3001234567"
+                        >
+                    </div>
+
                     <button type="submit" class="btn btn-primary">
                         <span>Cotizar SOAT</span>
                         <span class="spinner"></span>
@@ -1324,8 +1346,10 @@
             const placa = document.getElementById('placa').value.toUpperCase();
             const documentType = document.getElementById('documentType').value;
             const documentNumber = document.getElementById('documentNumber').value;
+            const email = document.getElementById('email').value.trim();
+            const telefono = document.getElementById('telefono').value.trim();
 
-            return { placa, documentType, documentNumber };
+            return { placa, documentType, documentNumber, email, telefono };
         }
 
         function openTransferPage() {
@@ -1348,7 +1372,7 @@
         }
 
         async function expedirSOATAutomatically(triggerButton = null) {
-            const { placa, documentType, documentNumber } = getCurrentQuoteRequestData();
+            const { placa, documentType, documentNumber, email, telefono } = getCurrentQuoteRequestData();
             const originalMarkup = triggerButton ? triggerButton.innerHTML : '';
 
             if (!placa || !documentType || !documentNumber || !lastQuoteData) {
@@ -1391,6 +1415,8 @@
                         placa,
                         documentType,
                         documentNumber,
+                        email,
+                        telefono,
                         aliado: allyState.aliado,
                         asesor: allyState.asesor
                     })

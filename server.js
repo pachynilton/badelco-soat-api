@@ -535,12 +535,12 @@ function getNationalOperationCardId(plateMetadata) {
     return null;
 }
 
-function buildContactFromTomador(tomador = {}, documentType, documentNumber) {
+function buildContactFromTomador(tomador = {}, documentType, documentNumber, fallbackContact = {}) {
     const address = tomador.Address || tomador.address || tomador.Direccion || tomador.direccion || tomador?.Address?.Description || tomador?.Address?.Address || '';
     const cityId = tomador.CityId || tomador.cityId || tomador?.Address?.CityId || tomador?.Address?.cityId || '';
     const stateId = tomador.StateId || tomador.stateId || tomador?.Address?.StateId || tomador?.Address?.stateId || '';
-    const email = tomador.Email || tomador.email || '';
-    const cellular = tomador.Cellular || tomador.cellular || tomador.Phone || tomador.phone || '';
+    const email = tomador.Email || tomador.email || fallbackContact.Email || '';
+    const cellular = tomador.Cellular || tomador.cellular || tomador.Phone || tomador.phone || fallbackContact.Cellular || '';
     const firstName = tomador.FirstName || tomador.firstName || tomador.Name || '';
     const lastName = tomador.LastName || tomador.lastName || tomador.LastNames || '';
 
@@ -1016,8 +1016,12 @@ app.get('/api/plates/:placa', (req, res) => {
 
 app.post('/api/expedir', requireAlliesSession, async (req, res) => {
     try {
-        const { placa, documentType, documentNumber, aliado, asesor } = req.body;
+        const { placa, documentType, documentNumber, aliado, asesor, email, telefono, celular } = req.body;
         const normalizedPlate = normalizePlate(placa);
+        const fallbackContact = {
+            Email: String(email || '').trim(),
+            Cellular: String(telefono || celular || '').trim()
+        };
         const sendFailedNotification = async (detail, contact = null, plateMetadata = null, refVenta = '') => sendAliadoNotification({
             aliado,
             asesor,
@@ -1127,7 +1131,12 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             }
         });
 
-        const { contact, missingFields } = buildContactFromTomador(tomadorResponse.data?.tomador || {}, documentType, documentNumber);
+        const { contact, missingFields } = buildContactFromTomador(
+            tomadorResponse.data?.tomador || {},
+            documentType,
+            documentNumber,
+            fallbackContact
+        );
         if (missingFields.length > 0) {
             const notification = await sendFailedNotification(`Faltan datos del tomador en SAME: ${missingFields.join(', ')}`, contact, plateMetadata);
             return res.status(422).json({
