@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -29,7 +30,6 @@ app.use(helmet({
         }
     }
 }));
-
 // Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutos
@@ -117,6 +117,9 @@ const SMTP_SEND_TIMEOUT_MS = normalizeEnvNumber(process.env.SMTP_SEND_TIMEOUT_MS
 const SMTP_SEND_ATTEMPTS = Math.max(1, normalizeEnvNumber(process.env.SMTP_SEND_ATTEMPTS || process.env.STMP_SEND_ATTEMPS, 2));
 const SMTP_RETRY_DELAY_MS = Math.max(0, normalizeEnvNumber(process.env.SMTP_RETRY_DELAY_MS, 1500));
 const SMTP_FALLBACK_TO_587 = normalizeEnvBoolean(process.env.SMTP_FALLBACK_TO_587, true);
+const RESEND_API_KEY = normalizeEnvString(process.env.RESEND_API_KEY);
+const RESEND_FROM = normalizeEnvString(process.env.RESEND_FROM, normalizeEnvString(process.env.SMTP_FROM, SMTP_USER));
+const RESEND_AUDIENCE = normalizeEnvString(process.env.RESEND_AUDIENCE, NOTIFICATION_EMAIL);
 
 const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
 const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
@@ -125,6 +128,7 @@ const ALLY_LOGIN_PASSWORD_HASH = String(process.env.ALLY_LOGIN_PASSWORD_HASH || 
 const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES || 30);
 const ENABLE_DEBUG_ENDPOINTS = String(process.env.ENABLE_DEBUG_ENDPOINTS || 'false') === 'true';
 const allySessions = new Map();
+const resendClient = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 const plateCatalog = loadPlateCatalog();
 let sameAuthToken = '';
@@ -148,6 +152,10 @@ let currentToken = AUTH_TOKEN; // Empezar con el token fijo
 let tokenGeneratedAt = new Date();
 let isUsingFixedToken = true;
 let activeLegacyApiBaseUrl = LEGACY_API_BASE_CANDIDATES[0];
+
+function isResendConfigured() {
+    return Boolean(resendClient && RESEND_FROM && RESEND_AUDIENCE);
+}
 
 function maskSecret(value, keepStart = 4, keepEnd = 2) {
     const secret = String(value || '');
@@ -260,6 +268,7 @@ console.log('- Secret Key:', maskSecret(SECRET_KEY));
 console.log('- Auth Token:', maskSecret(AUTH_TOKEN));
 console.log('- SAME API URL:', SAME_API_BASE_URL);
 console.log('- SAME API configurada:', Boolean(SAME_API_KEY && SAME_SECRET_KEY));
+console.log('- Resend configurado:', isResendConfigured());
 console.log('- SMTP configurado:', Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS));
 console.log('- SMTP host/port/secure:', `${SMTP_HOST}:${SMTP_PORT} secure=${SMTP_SECURE}`);
 console.log('- SMTP intentos/timeout:', `${SMTP_SEND_ATTEMPTS} intentos, ${SMTP_SEND_TIMEOUT_MS}ms timeout`);
@@ -438,33 +447,6 @@ async function sendAliadoNotification({
         referenciaVenta: payload.referenciaVenta
     };
 
-    if (!isSmtpConfigured()) {
-        const localFile = saveLocalNotification(payload);
-        appendNotificationStat({
-            ...baseStat,
-            sent: false,
-            channel: localFile ? 'local-file' : 'none',
-            reason: 'SMTP no configurado',
-            localFile
-        });
-        console.warn('⚠️ SMTP no configurado. Notificación pendiente:', payload);
-        return {
-            sent: false,
-            reason: 'SMTP no configurado',
-            channel: localFile ? 'local-file' : 'none',
-            localFile,
-            payload
-        };
-    }
-
-    const transportCandidates = [
-        { host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, label: 'primary' }
-    ];
-
-    if (SMTP_FALLBACK_TO_587 && SMTP_PORT === 465) {
-        transportCandidates.push({ host: SMTP_HOST, port: 587, secure: false, label: 'fallback-587' });
-    }
-
     const mailOptions = {
         from: normalizeEnvString(process.env.SMTP_FROM, SMTP_USER),
         to: NOTIFICATION_EMAIL,
@@ -505,6 +487,68 @@ async function sendAliadoNotification({
             <p><strong>Direccion contacto:</strong> ${payload.contacto.direccion}</p>
         `
     };
+
+    if (isResendConfigured()) {
+        try {
+            const resendResult = await resendClient.emails.send({
+                from: RESEND_FROM,
+                to: [RESEND_AUDIENCE],
+                subject: mailOptions.subject,
+                text: mailOptions.text,
+                html: mailOptions.html
+            });
+
+            appendNotificationStat({
+                ...baseStat,
+                sent: true,
+                channel: 'resend',
+                messageId: resendResult?.data?.id || resendResult?.id || null,
+                accepted: [RESEND_AUDIENCE],
+                rejected: []
+            });
+
+            console.log('✅ Notificación enviada con Resend:', {
+                messageId: resendResult?.data?.id || resendResult?.id || null,
+                audience: RESEND_AUDIENCE
+            });
+
+            return {
+                sent: true,
+                channel: 'resend',
+                messageId: resendResult?.data?.id || resendResult?.id || null,
+                payload
+            };
+        } catch (error) {
+            console.warn('⚠️ Resend falló, se intentará SMTP:', error.message);
+        }
+    }
+
+    if (!isSmtpConfigured()) {
+        const localFile = saveLocalNotification(payload);
+        appendNotificationStat({
+            ...baseStat,
+            sent: false,
+            channel: localFile ? 'local-file' : 'none',
+            reason: 'SMTP no configurado',
+            localFile
+        });
+        console.warn('⚠️ SMTP no configurado. Notificación pendiente:', payload);
+        return {
+            sent: false,
+            reason: 'SMTP no configurado',
+            channel: localFile ? 'local-file' : 'none',
+            localFile,
+            payload
+        };
+    }
+
+    const transportCandidates = [
+        { host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, label: 'primary' }
+    ];
+
+    if (SMTP_FALLBACK_TO_587 && SMTP_PORT === 465) {
+        transportCandidates.push({ host: SMTP_HOST, port: 587, secure: false, label: 'fallback-587' });
+    }
 
     try {
         let result = null;
@@ -581,6 +625,28 @@ async function sendAliadoNotification({
         sent: true,
         channel: 'smtp',
         payload
+    };
+}
+
+function queueAliadoNotification(notificationInput) {
+    Promise.resolve()
+        .then(() => sendAliadoNotification(notificationInput))
+        .then((result) => {
+            console.log('📨 Notificación procesada en segundo plano:', {
+                sent: result?.sent,
+                channel: result?.channel || 'unknown',
+                reason: result?.reason || null
+            });
+        })
+        .catch((error) => {
+            console.error('❌ Error procesando notificación en segundo plano:', error.message);
+        });
+
+    return {
+        sent: false,
+        queued: true,
+        channel: 'background',
+        reason: 'Notificación en proceso'
     };
 }
 
@@ -1182,7 +1248,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             Email: String(email || '').trim(),
             Cellular: String(telefono || celular || '').trim()
         };
-        const sendFailedNotification = async (detail, contact = null, plateMetadata = null, refVenta = '') => sendAliadoNotification({
+        const sendFailedNotification = (detail, contact = null, plateMetadata = null, refVenta = '') => queueAliadoNotification({
             aliado,
             asesor,
             placa: normalizedPlate,
@@ -1197,7 +1263,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
         });
 
         if (!normalizedPlate || !documentType || !documentNumber || !aliado || !asesor) {
-            const notification = await sendFailedNotification('Faltan datos requeridos para la expedición');
+            const notification = sendFailedNotification('Faltan datos requeridos para la expedición');
             return res.status(400).json({
                 success: false,
                 message: 'Faltan datos requeridos para la expedición',
@@ -1206,7 +1272,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
         }
 
         if (!ALLY_OPTIONS.includes(aliado) || !ADVISOR_OPTIONS.includes(asesor)) {
-            const notification = await sendFailedNotification('Aliado o asesor inválido');
+            const notification = sendFailedNotification('Aliado o asesor inválido');
             return res.status(400).json({
                 success: false,
                 message: 'Aliado o asesor inválido',
@@ -1216,7 +1282,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
 
         const plateMetadata = getPlateMetadata(normalizedPlate);
         if (REQUIRE_LISTED_PLATES && !plateMetadata) {
-            const notification = await sendFailedNotification('La placa no se encuentra en el listado de pruebas');
+            const notification = sendFailedNotification('La placa no se encuentra en el listado de pruebas');
             return res.status(404).json({
                 success: false,
                 message: 'La placa no se encuentra en el listado de pruebas',
@@ -1226,7 +1292,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
         }
 
         if (!isSameConfigured()) {
-            const notification = await sendAliadoNotification({
+            const notification = queueAliadoNotification({
                 aliado,
                 asesor,
                 placa: normalizedPlate,
@@ -1263,7 +1329,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
         if (vehicle.ServiceTypeId === 2) {
             const nationalOperationCardId = getNationalOperationCardId(plateMetadata);
             if (!nationalOperationCardId) {
-                const notification = await sendFailedNotification('No fue posible inferir el tipo de operación del vehículo público');
+                const notification = sendFailedNotification('No fue posible inferir el tipo de operación del vehículo público');
                 return res.status(422).json({
                     success: false,
                     message: 'La placa es de servicio público y no fue posible inferir el tipo de operación desde el archivo de placas',
@@ -1302,7 +1368,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             fallbackContact
         );
         if (missingFields.length > 0) {
-            const notification = await sendFailedNotification(`Faltan datos del tomador en SAME: ${missingFields.join(', ')}`, contact, plateMetadata);
+            const notification = sendFailedNotification(`Faltan datos del tomador en SAME: ${missingFields.join(', ')}`, contact, plateMetadata);
             return res.status(422).json({
                 success: false,
                 message: `No es posible emitir porque faltan datos del tomador en SAME: ${missingFields.join(', ')}`,
@@ -1328,7 +1394,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
 
         const validationResponse = await sameRequest('post', 'valida', { data: payload });
         if (!validationResponse.data?.status) {
-            const notification = await sendFailedNotification(
+            const notification = sendFailedNotification(
                 validationResponse.data?.message || 'SAME rechazó la validación de emisión',
                 contact,
                 plateMetadata,
@@ -1344,7 +1410,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
 
         const issueResponse = await sameRequest('post', 'soat', { data: payload });
         const policyNumber = issueResponse.data?.soat?.numPoliza || issueResponse.data?.soat?.InsurancePolicyNumber || '';
-        const notification = await sendAliadoNotification({
+        const notification = queueAliadoNotification({
             aliado,
             asesor,
             placa: normalizedPlate,
@@ -1369,7 +1435,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
     } catch (error) {
         console.error('❌ Error en expedición SAME:', error.response?.data || error.message);
         const notification = (req.body?.aliado && req.body?.asesor && req.body?.placa && req.body?.documentNumber)
-            ? await sendAliadoNotification({
+            ? queueAliadoNotification({
                 aliado: req.body.aliado,
                 asesor: req.body.asesor,
                 placa: req.body.placa,
