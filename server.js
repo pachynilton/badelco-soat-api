@@ -14,6 +14,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Railway corre detrás de proxy; esto evita errores de express-rate-limit con X-Forwarded-For.
+app.set('trust proxy', 1);
+
 // Despues de crear la app
 app.use(helmet({
     contentSecurityPolicy: {
@@ -111,6 +114,8 @@ const SMTP_USER = normalizeEnvString(process.env.SMTP_USER);
 const SMTP_PASS = normalizeEnvString(process.env.SMTP_PASS);
 const SAME_REQUEST_TIMEOUT_MS = Number(process.env.SAME_REQUEST_TIMEOUT_MS || 12000);
 const SMTP_SEND_TIMEOUT_MS = normalizeEnvNumber(process.env.SMTP_SEND_TIMEOUT_MS, 20000);
+const SMTP_SEND_ATTEMPTS = normalizeEnvNumber(process.env.SMTP_SEND_ATTEMPTS, 2);
+const SMTP_RETRY_DELAY_MS = normalizeEnvNumber(process.env.SMTP_RETRY_DELAY_MS, 1500);
 
 const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
 const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
@@ -289,6 +294,10 @@ function normalizeEnvBoolean(value, fallback = false) {
     return fallback;
 }
 
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function normalizePlate(value = '') {
     return String(value).trim().toUpperCase();
 }
@@ -369,6 +378,18 @@ function saveLocalNotification(payload) {
     }
 }
 
+function appendNotificationStat(entry) {
+    try {
+        fs.mkdirSync(LOCAL_NOTIFICATIONS_DIR, { recursive: true });
+        const statsPath = path.join(LOCAL_NOTIFICATIONS_DIR, 'notification-stats.ndjson');
+        fs.appendFileSync(statsPath, `${JSON.stringify(entry)}\n`, 'utf8');
+        return statsPath;
+    } catch (error) {
+        console.error('❌ No se pudo registrar estadística de notificación:', error.message);
+        return null;
+    }
+}
+
 async function sendAliadoNotification({
     aliado,
     asesor,
@@ -404,8 +425,25 @@ async function sendAliadoNotification({
         }
     };
 
+    const baseStat = {
+        timestamp: new Date().toISOString(),
+        aliado: payload.aliado,
+        asesor: payload.asesor,
+        placa: payload.placa,
+        emitido: payload.emitido,
+        detalle: payload.detalle,
+        referenciaVenta: payload.referenciaVenta
+    };
+
     if (!isSmtpConfigured()) {
         const localFile = saveLocalNotification(payload);
+        appendNotificationStat({
+            ...baseStat,
+            sent: false,
+            channel: localFile ? 'local-file' : 'none',
+            reason: 'SMTP no configurado',
+            localFile
+        });
         console.warn('⚠️ SMTP no configurado. Notificación pendiente:', payload);
         return {
             sent: false,
@@ -459,10 +497,37 @@ async function sendAliadoNotification({
     };
 
     try {
-        const result = await Promise.race([
-            transporter.sendMail(mailOptions),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera SMTP agotado')), SMTP_SEND_TIMEOUT_MS))
-        ]);
+        let result = null;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= SMTP_SEND_ATTEMPTS; attempt += 1) {
+            try {
+                result = await Promise.race([
+                    transporter.sendMail(mailOptions),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera SMTP agotado')), SMTP_SEND_TIMEOUT_MS))
+                ]);
+                break;
+            } catch (error) {
+                lastError = error;
+                console.warn(`⚠️ Intento SMTP ${attempt}/${SMTP_SEND_ATTEMPTS} fallido:`, error.message);
+                if (attempt < SMTP_SEND_ATTEMPTS) {
+                    await wait(SMTP_RETRY_DELAY_MS);
+                }
+            }
+        }
+
+        if (!result) {
+            throw lastError || new Error('No se pudo enviar notificación SMTP');
+        }
+
+        appendNotificationStat({
+            ...baseStat,
+            sent: true,
+            channel: 'smtp',
+            messageId: result?.messageId || null,
+            accepted: result?.accepted || [],
+            rejected: result?.rejected || []
+        });
 
         console.log('✅ Notificación SMTP enviada:', {
             messageId: result?.messageId || null,
@@ -471,6 +536,13 @@ async function sendAliadoNotification({
         });
     } catch (error) {
         const localFile = saveLocalNotification(payload);
+        appendNotificationStat({
+            ...baseStat,
+            sent: false,
+            channel: localFile ? 'local-file' : 'none',
+            reason: error.message,
+            localFile
+        });
         console.warn('⚠️ No se pudo enviar notificación por SMTP:', {
             reason: error.message,
             smtpHost: SMTP_HOST,
@@ -489,6 +561,7 @@ async function sendAliadoNotification({
 
     return {
         sent: true,
+        channel: 'smtp',
         payload
     };
 }
@@ -1106,16 +1179,20 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
         });
 
         if (!normalizedPlate || !documentType || !documentNumber || !aliado || !asesor) {
+            const notification = await sendFailedNotification('Faltan datos requeridos para la expedición');
             return res.status(400).json({
                 success: false,
-                message: 'Faltan datos requeridos para la expedición'
+                message: 'Faltan datos requeridos para la expedición',
+                notification
             });
         }
 
         if (!ALLY_OPTIONS.includes(aliado) || !ADVISOR_OPTIONS.includes(asesor)) {
+            const notification = await sendFailedNotification('Aliado o asesor inválido');
             return res.status(400).json({
                 success: false,
-                message: 'Aliado o asesor inválido'
+                message: 'Aliado o asesor inválido',
+                notification
             });
         }
 
