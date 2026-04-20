@@ -109,13 +109,13 @@ const SAME_IND_PRUEBA = String(process.env.SAME_IND_PRUEBA || '1');
 const REQUIRE_LISTED_PLATES = String(process.env.REQUIRE_LISTED_PLATES || (SAME_IND_PRUEBA === '1' ? 'true' : 'false')) === 'true';
 const SMTP_HOST = normalizeEnvString(process.env.SMTP_HOST);
 const SMTP_PORT = normalizeEnvNumber(process.env.SMTP_PORT, 587);
-const SMTP_SECURE = normalizeEnvBoolean(process.env.SMTP_SECURE, false);
+const SMTP_SECURE = normalizeEnvBoolean(process.env.SMTP_SECURE, SMTP_PORT === 465);
 const SMTP_USER = normalizeEnvString(process.env.SMTP_USER);
 const SMTP_PASS = normalizeEnvString(process.env.SMTP_PASS);
 const SAME_REQUEST_TIMEOUT_MS = Number(process.env.SAME_REQUEST_TIMEOUT_MS || 12000);
 const SMTP_SEND_TIMEOUT_MS = normalizeEnvNumber(process.env.SMTP_SEND_TIMEOUT_MS, 20000);
-const SMTP_SEND_ATTEMPTS = normalizeEnvNumber(process.env.SMTP_SEND_ATTEMPTS, 2);
-const SMTP_RETRY_DELAY_MS = normalizeEnvNumber(process.env.SMTP_RETRY_DELAY_MS, 1500);
+const SMTP_SEND_ATTEMPTS = Math.max(1, normalizeEnvNumber(process.env.SMTP_SEND_ATTEMPTS, 2));
+const SMTP_RETRY_DELAY_MS = Math.max(0, normalizeEnvNumber(process.env.SMTP_RETRY_DELAY_MS, 1500));
 
 const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
 const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
@@ -260,6 +260,8 @@ console.log('- Auth Token:', maskSecret(AUTH_TOKEN));
 console.log('- SAME API URL:', SAME_API_BASE_URL);
 console.log('- SAME API configurada:', Boolean(SAME_API_KEY && SAME_SECRET_KEY));
 console.log('- SMTP configurado:', Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS));
+console.log('- SMTP host/port/secure:', `${SMTP_HOST}:${SMTP_PORT} secure=${SMTP_SECURE}`);
+console.log('- SMTP intentos/timeout:', `${SMTP_SEND_ATTEMPTS} intentos, ${SMTP_SEND_TIMEOUT_MS}ms timeout`);
 console.log('- Login aliados configurado:', Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH));
 
 function ensureTrailingSlash(url) {
@@ -354,7 +356,7 @@ function createTransporter() {
         host: SMTP_HOST,
         port: SMTP_PORT,
         secure: SMTP_SECURE,
-        requireTLS: !SMTP_SECURE,
+        requireTLS: !SMTP_SECURE && SMTP_PORT === 587,
         connectionTimeout: 15000,
         greetingTimeout: 12000,
         socketTimeout: 20000,
