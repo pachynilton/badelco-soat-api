@@ -113,9 +113,10 @@ const SMTP_SECURE = normalizeEnvBoolean(process.env.SMTP_SECURE, SMTP_PORT === 4
 const SMTP_USER = normalizeEnvString(process.env.SMTP_USER);
 const SMTP_PASS = normalizeEnvString(process.env.SMTP_PASS);
 const SAME_REQUEST_TIMEOUT_MS = Number(process.env.SAME_REQUEST_TIMEOUT_MS || 12000);
-const SMTP_SEND_TIMEOUT_MS = normalizeEnvNumber(process.env.SMTP_SEND_TIMEOUT_MS, 20000);
-const SMTP_SEND_ATTEMPTS = Math.max(1, normalizeEnvNumber(process.env.SMTP_SEND_ATTEMPTS, 2));
+const SMTP_SEND_TIMEOUT_MS = normalizeEnvNumber(process.env.SMTP_SEND_TIMEOUT_MS || process.env.STPM_SEND_TIMEOUT_MS, 20000);
+const SMTP_SEND_ATTEMPTS = Math.max(1, normalizeEnvNumber(process.env.SMTP_SEND_ATTEMPTS || process.env.STMP_SEND_ATTEMPS, 2));
 const SMTP_RETRY_DELAY_MS = Math.max(0, normalizeEnvNumber(process.env.SMTP_RETRY_DELAY_MS, 1500));
+const SMTP_FALLBACK_TO_587 = normalizeEnvBoolean(process.env.SMTP_FALLBACK_TO_587, true);
 
 const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
 const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
@@ -347,16 +348,16 @@ function isSmtpConfigured() {
     return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
 }
 
-function createTransporter() {
+function createTransporter({ host = SMTP_HOST, port = SMTP_PORT, secure = SMTP_SECURE } = {}) {
     if (!isSmtpConfigured()) {
         return null;
     }
 
     return nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: SMTP_SECURE,
-        requireTLS: !SMTP_SECURE && SMTP_PORT === 587,
+        host,
+        port,
+        secure,
+        requireTLS: !secure && port === 587,
         connectionTimeout: 15000,
         greetingTimeout: 12000,
         socketTimeout: 20000,
@@ -456,7 +457,14 @@ async function sendAliadoNotification({
         };
     }
 
-    const transporter = createTransporter();
+    const transportCandidates = [
+        { host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, label: 'primary' }
+    ];
+
+    if (SMTP_FALLBACK_TO_587 && SMTP_PORT === 465) {
+        transportCandidates.push({ host: SMTP_HOST, port: 587, secure: false, label: 'fallback-587' });
+    }
+
     const mailOptions = {
         from: normalizeEnvString(process.env.SMTP_FROM, SMTP_USER),
         to: NOTIFICATION_EMAIL,
@@ -502,19 +510,27 @@ async function sendAliadoNotification({
         let result = null;
         let lastError = null;
 
-        for (let attempt = 1; attempt <= SMTP_SEND_ATTEMPTS; attempt += 1) {
-            try {
-                result = await Promise.race([
-                    transporter.sendMail(mailOptions),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera SMTP agotado')), SMTP_SEND_TIMEOUT_MS))
-                ]);
-                break;
-            } catch (error) {
-                lastError = error;
-                console.warn(`⚠️ Intento SMTP ${attempt}/${SMTP_SEND_ATTEMPTS} fallido:`, error.message);
-                if (attempt < SMTP_SEND_ATTEMPTS) {
-                    await wait(SMTP_RETRY_DELAY_MS);
+        for (const candidate of transportCandidates) {
+            const transporter = createTransporter(candidate);
+
+            for (let attempt = 1; attempt <= SMTP_SEND_ATTEMPTS; attempt += 1) {
+                try {
+                    result = await Promise.race([
+                        transporter.sendMail(mailOptions),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera SMTP agotado')), SMTP_SEND_TIMEOUT_MS))
+                    ]);
+                    break;
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`⚠️ Intento SMTP ${attempt}/${SMTP_SEND_ATTEMPTS} fallido (${candidate.label} ${candidate.host}:${candidate.port} secure=${candidate.secure}):`, error.message);
+                    if (attempt < SMTP_SEND_ATTEMPTS) {
+                        await wait(SMTP_RETRY_DELAY_MS);
+                    }
                 }
+            }
+
+            if (result) {
+                break;
             }
         }
 
