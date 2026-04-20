@@ -97,20 +97,20 @@ app.use(express.static('public'));
 
 const WORKBOOK_PATH = path.join(__dirname, 'Listado-Placas.xlsx');
 const LOCAL_NOTIFICATIONS_DIR = path.join(__dirname, 'local-notifications');
-const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || 'info@badelco.co';
+const NOTIFICATION_EMAIL = normalizeEnvString(process.env.NOTIFICATION_EMAIL, 'info@badelco.co');
 const SAME_API_BASE_URL = ensureTrailingSlash(process.env.SAME_API_BASE_URL || process.env.API_BASE_URL || 'https://pagoalafija.co/api/public/');
 const SAME_API_KEY = process.env.SAME_API_KEY || process.env.API_KEY || '';
 const SAME_SECRET_KEY = process.env.SAME_SECRET_KEY || process.env.SECRET_KEY || '';
 const SAME_COD_PRODUCTO = Number(process.env.SAME_COD_PRODUCTO || 63);
 const SAME_IND_PRUEBA = String(process.env.SAME_IND_PRUEBA || '1');
 const REQUIRE_LISTED_PLATES = String(process.env.REQUIRE_LISTED_PLATES || (SAME_IND_PRUEBA === '1' ? 'true' : 'false')) === 'true';
-const SMTP_HOST = process.env.SMTP_HOST || '';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_SECURE = String(process.env.SMTP_SECURE || 'false') === 'true';
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_HOST = normalizeEnvString(process.env.SMTP_HOST);
+const SMTP_PORT = normalizeEnvNumber(process.env.SMTP_PORT, 587);
+const SMTP_SECURE = normalizeEnvBoolean(process.env.SMTP_SECURE, false);
+const SMTP_USER = normalizeEnvString(process.env.SMTP_USER);
+const SMTP_PASS = normalizeEnvString(process.env.SMTP_PASS);
 const SAME_REQUEST_TIMEOUT_MS = Number(process.env.SAME_REQUEST_TIMEOUT_MS || 12000);
-const SMTP_SEND_TIMEOUT_MS = Number(process.env.SMTP_SEND_TIMEOUT_MS || 10000);
+const SMTP_SEND_TIMEOUT_MS = normalizeEnvNumber(process.env.SMTP_SEND_TIMEOUT_MS, 20000);
 
 const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
 const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
@@ -261,6 +261,34 @@ function ensureTrailingSlash(url) {
     return url.endsWith('/') ? url : `${url}/`;
 }
 
+function normalizeEnvString(value, fallback = '') {
+    const normalized = String(value ?? '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
+    return normalized || fallback;
+}
+
+function normalizeEnvNumber(value, fallback) {
+    const normalized = normalizeEnvString(value);
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeEnvBoolean(value, fallback = false) {
+    const normalized = normalizeEnvString(value).toLowerCase();
+    if (!normalized) {
+        return fallback;
+    }
+
+    if (['true', '1', 'yes', 'on'].includes(normalized)) {
+        return true;
+    }
+
+    if (['false', '0', 'no', 'off'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+}
+
 function normalizePlate(value = '') {
     return String(value).trim().toUpperCase();
 }
@@ -317,9 +345,10 @@ function createTransporter() {
         host: SMTP_HOST,
         port: SMTP_PORT,
         secure: SMTP_SECURE,
-        connectionTimeout: 8000,
-        greetingTimeout: 7000,
-        socketTimeout: 10000,
+        requireTLS: !SMTP_SECURE,
+        connectionTimeout: 15000,
+        greetingTimeout: 12000,
+        socketTimeout: 20000,
         auth: {
             user: SMTP_USER,
             pass: SMTP_PASS
@@ -389,7 +418,7 @@ async function sendAliadoNotification({
 
     const transporter = createTransporter();
     const mailOptions = {
-        from: process.env.SMTP_FROM || SMTP_USER,
+        from: normalizeEnvString(process.env.SMTP_FROM, SMTP_USER),
         to: NOTIFICATION_EMAIL,
         subject: `Badelco SOAT - ${issued ? 'EXPEDIDO' : 'FALLIDO'} - ${aliado} / ${asesor}`,
         text: [
@@ -430,13 +459,25 @@ async function sendAliadoNotification({
     };
 
     try {
-        await Promise.race([
+        const result = await Promise.race([
             transporter.sendMail(mailOptions),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera SMTP agotado')), SMTP_SEND_TIMEOUT_MS))
         ]);
+
+        console.log('✅ Notificación SMTP enviada:', {
+            messageId: result?.messageId || null,
+            accepted: result?.accepted || [],
+            rejected: result?.rejected || []
+        });
     } catch (error) {
         const localFile = saveLocalNotification(payload);
-        console.warn('⚠️ No se pudo enviar notificación por SMTP a tiempo:', error.message);
+        console.warn('⚠️ No se pudo enviar notificación por SMTP:', {
+            reason: error.message,
+            smtpHost: SMTP_HOST,
+            smtpPort: SMTP_PORT,
+            notificationEmail: NOTIFICATION_EMAIL,
+            localFile
+        });
         return {
             sent: false,
             reason: error.message,
