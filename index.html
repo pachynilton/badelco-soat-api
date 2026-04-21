@@ -1238,27 +1238,6 @@
                 .concat(options.map(option => `<option value="${option}">${option}</option>`))
                 .join('');
         }
-
-        function renderBackendFlags() {
-            const flags = document.getElementById('backendFlags');
-            if (!flags) {
-                return;
-            }
-
-            const items = [];
-            if (appConfig.sameConfigured) {
-                items.push('<span class="flag-pill is-ok">SAME configurado</span>');
-            } else {
-                items.push('<span class="flag-pill is-warn">SAME pendiente</span>');
-            }
-
-            if (appConfig.smtpConfigured) {
-                items.push('<span class="flag-pill is-ok">SMTP activo</span>');
-            }
-
-            flags.innerHTML = items.join('');
-        }
-
     
 
         function showAlliesStep(stepId) {
