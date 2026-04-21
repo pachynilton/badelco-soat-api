@@ -685,6 +685,90 @@
                 font-size: 24px;
             }
         }
+
+        .admin-overlay-card {
+            width: min(100%, 900px);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .admin-panel-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .admin-panel-card h3 {
+            margin-bottom: 10px;
+            color: var(--primary-color);
+            font-size: 16px;
+        }
+
+        .inline-form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .chip-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 999px;
+            background: #fff7ed;
+            color: #9a3412;
+            border: 1px solid rgba(226, 85, 50, 0.25);
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+
+        .chip-item button {
+            border: none;
+            background: transparent;
+            color: #991b1b;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .admin-credential-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .admin-credential-form .btn {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 768px) {
+            .admin-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .admin-credential-form {
+                grid-template-columns: 1fr;
+            }
+
+            .inline-form {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
@@ -830,6 +914,11 @@
                             <span>🤝</span>
                             <span>Aliados</span>
                         </button>
+
+                        <button class="btn btn-outline" id="adminBtn">
+                            <span>🛡️</span>
+                            <span>Panel Administrador</span>
+                        </button>
                     </div>
 
                     <div class="ally-status" id="allyStatus">
@@ -898,6 +987,92 @@
         </div>
     </div>
 
+    <div class="overlay-page" id="adminOverlay" aria-hidden="true">
+        <div class="overlay-card admin-overlay-card">
+            <button type="button" class="overlay-close" id="closeAdminBtn" aria-label="Cerrar">×</button>
+
+            <section class="overlay-step is-active" id="adminLoginStep">
+                <h2 class="overlay-title">Panel Administrador</h2>
+                <p class="overlay-copy">Inicia sesión para administrar aliados, asesores y credenciales de la plataforma.</p>
+
+                <form id="adminLoginForm">
+                    <div class="form-group">
+                        <label class="form-label" for="adminUser">Usuario administrador</label>
+                        <input type="text" id="adminUser" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="adminPassword">Contraseña administradora</label>
+                        <input type="password" id="adminPassword" class="form-input" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <span>Ingresar al panel</span>
+                    </button>
+                </form>
+
+                <div class="credential-hint" id="adminLoginMessage">
+                    Usa tus credenciales de administrador.
+                </div>
+            </section>
+
+            <section class="overlay-step" id="adminManageStep">
+                <h2 class="overlay-title">Gestión de Catálogo y Accesos</h2>
+                <p class="overlay-copy">Aquí puedes agregar/quitar aliados y asesores, y cambiar credenciales validando las anteriores.</p>
+
+                <div class="admin-grid">
+                    <section class="admin-panel-card">
+                        <h3>Aliados</h3>
+                        <form id="addAllyForm" class="inline-form">
+                            <input type="text" id="newAllyName" class="form-input" placeholder="Nuevo aliado" required>
+                            <button type="submit" class="btn btn-outline">Agregar</button>
+                        </form>
+                        <div id="adminAlliesList" class="chip-list"></div>
+                    </section>
+
+                    <section class="admin-panel-card">
+                        <h3>Asesores</h3>
+                        <form id="addAdvisorForm" class="inline-form">
+                            <input type="text" id="newAdvisorName" class="form-input" placeholder="Nuevo asesor" required>
+                            <button type="submit" class="btn btn-outline">Agregar</button>
+                        </form>
+                        <div id="adminAdvisorsList" class="chip-list"></div>
+                    </section>
+                </div>
+
+                <section class="admin-panel-card">
+                    <h3>Cambiar credenciales del botón Aliados</h3>
+                    <form id="changeAllyCredentialsForm" class="admin-credential-form">
+                        <input type="text" id="oldAllyUser" class="form-input" placeholder="Usuario aliado antiguo" required>
+                        <input type="password" id="oldAllyPassword" class="form-input" placeholder="Contraseña aliada antigua" required>
+                        <input type="text" id="newAllyUser" class="form-input" placeholder="Usuario aliado nuevo" required>
+                        <input type="password" id="newAllyPassword" class="form-input" placeholder="Contraseña aliada nueva" required>
+                        <button type="submit" class="btn btn-primary"><span>Actualizar credenciales de Aliados</span></button>
+                    </form>
+                </section>
+
+                <section class="admin-panel-card">
+                    <h3>Cambiar credenciales del Administrador</h3>
+                    <form id="changeAdminCredentialsForm" class="admin-credential-form">
+                        <input type="text" id="oldAdminUser" class="form-input" placeholder="Usuario admin antiguo" required>
+                        <input type="password" id="oldAdminPassword" class="form-input" placeholder="Contraseña admin antigua" required>
+                        <input type="text" id="newAdminUser" class="form-input" placeholder="Usuario admin nuevo" required>
+                        <input type="password" id="newAdminPassword" class="form-input" placeholder="Contraseña admin nueva" required>
+                        <button type="submit" class="btn btn-primary"><span>Actualizar credenciales de Administrador</span></button>
+                    </form>
+                </section>
+
+                <div class="credential-hint" id="adminManageMessage">
+                    Cuando hagas cambios aquí, los desplegables de aliados y asesores se actualizan automáticamente.
+                </div>
+
+                <button type="button" class="btn btn-outline" id="adminLogoutBtn">
+                    <span>Cerrar sesión de administrador</span>
+                </button>
+            </section>
+        </div>
+    </div>
+
     <script>
         function resolveApiBaseUrl() {
             const host = window.location.hostname;
@@ -931,6 +1106,15 @@
             sessionExpiresAt: 0,
             aliado: '',
             asesor: ''
+        };
+
+        const adminState = {
+            authenticated: false,
+            user: '',
+            sessionToken: '',
+            sessionExpiresAt: 0,
+            allyOptions: [],
+            advisorOptions: []
         };
 
         async function makeRequest(url, options = {}) {
@@ -1055,6 +1239,26 @@
                 .join('');
         }
 
+        function renderBackendFlags() {
+            const flags = document.getElementById('backendFlags');
+            if (!flags) {
+                return;
+            }
+
+            const items = [];
+            if (appConfig.sameConfigured) {
+                items.push('<span class="flag-pill is-ok">SAME configurado</span>');
+            } else {
+                items.push('<span class="flag-pill is-warn">SAME pendiente</span>');
+            }
+
+            if (appConfig.smtpConfigured) {
+                items.push('<span class="flag-pill is-ok">SMTP activo</span>');
+            }
+
+            flags.innerHTML = items.join('');
+        }
+
     
 
         function showAlliesStep(stepId) {
@@ -1079,6 +1283,131 @@
             const overlay = document.getElementById('alliesOverlay');
             overlay.classList.remove('is-open');
             overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function showAdminStep(stepId) {
+            const stepIds = ['adminLoginStep', 'adminManageStep'];
+            stepIds.forEach(id => {
+                const step = document.getElementById(id);
+                if (step) {
+                    step.classList.toggle('is-active', id === stepId);
+                }
+            });
+        }
+
+        function openAdminOverlay() {
+            const overlay = document.getElementById('adminOverlay');
+            overlay.classList.add('is-open');
+            overlay.setAttribute('aria-hidden', 'false');
+            document.getElementById('adminLoginMessage').textContent = '';
+            if (adminState.authenticated) {
+                showAdminStep('adminManageStep');
+                refreshAdminConfig();
+            } else {
+                document.getElementById('adminUser').value = '';
+                document.getElementById('adminPassword').value = '';
+                showAdminStep('adminLoginStep');
+            }
+        }
+
+        function closeAdminOverlay() {
+            const overlay = document.getElementById('adminOverlay');
+            overlay.classList.remove('is-open');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function setAdminMessage(message, tone = 'info') {
+            const box = document.getElementById('adminManageMessage');
+            box.textContent = message;
+            if (tone === 'ok') {
+                box.style.background = '#ecfdf5';
+                box.style.color = '#065f46';
+                return;
+            }
+            if (tone === 'error') {
+                box.style.background = '#fee2e2';
+                box.style.color = '#991b1b';
+                return;
+            }
+            box.style.background = '#f3f4f6';
+            box.style.color = '#374151';
+        }
+
+        async function makeAdminRequest(path, options = {}) {
+            if (!adminState.sessionToken) {
+                throw new Error('Sesión admin no disponible');
+            }
+
+            const headers = {
+                ...(options.headers || {}),
+                Authorization: `Bearer ${adminState.sessionToken}`
+            };
+
+            return makeRequest(`${PROXY_URL}${path}`, {
+                ...options,
+                headers
+            });
+        }
+
+        function renderAdminList(containerId, values, onDelete) {
+            const container = document.getElementById(containerId);
+            if (!container) {
+                return;
+            }
+
+            if (!values.length) {
+                container.innerHTML = '<span style="font-size:13px;color:#6b7280;">Sin registros</span>';
+                return;
+            }
+
+            container.innerHTML = values.map(value => `
+                <div class="chip-item">
+                    <span>${value}</span>
+                    <button type="button" data-value="${encodeURIComponent(value)}" aria-label="Eliminar">×</button>
+                </div>
+            `).join('');
+
+            container.querySelectorAll('button[data-value]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const value = decodeURIComponent(button.dataset.value || '');
+                    onDelete(value);
+                });
+            });
+        }
+
+        async function refreshAdminConfig() {
+            const data = await makeAdminRequest('/admin/config');
+            adminState.allyOptions = data.allyOptions || [];
+            adminState.advisorOptions = data.advisorOptions || [];
+            renderAdminList('adminAlliesList', adminState.allyOptions, removeAdminAlly);
+            renderAdminList('adminAdvisorsList', adminState.advisorOptions, removeAdminAdvisor);
+            setAdminMessage('Panel cargado. Puedes administrar catálogos y credenciales.', 'info');
+        }
+
+        async function removeAdminAlly(name) {
+            try {
+                await makeAdminRequest(`/admin/ally-options/${encodeURIComponent(name)}`, {
+                    method: 'DELETE'
+                });
+                await refreshAdminConfig();
+                await fetchConfig();
+                setAdminMessage(`Aliado eliminado: ${name}`, 'ok');
+            } catch (error) {
+                setAdminMessage(error.message || 'No fue posible eliminar el aliado', 'error');
+            }
+        }
+
+        async function removeAdminAdvisor(name) {
+            try {
+                await makeAdminRequest(`/admin/advisor-options/${encodeURIComponent(name)}`, {
+                    method: 'DELETE'
+                });
+                await refreshAdminConfig();
+                await fetchConfig();
+                setAdminMessage(`Asesor eliminado: ${name}`, 'ok');
+            } catch (error) {
+                setAdminMessage(error.message || 'No fue posible eliminar el asesor', 'error');
+            }
         }
 
         async function fetchConfig() {
@@ -1504,6 +1833,149 @@
             await expedirSOATAutomatically(submitButton);
         }
 
+        async function handleAdminLogin(event) {
+            event.preventDefault();
+
+            const user = document.getElementById('adminUser').value.trim();
+            const password = document.getElementById('adminPassword').value;
+            const message = document.getElementById('adminLoginMessage');
+
+            try {
+                const response = await makeRequest(`${PROXY_URL}/admin/auth/login`, {
+                    method: 'POST',
+                    body: JSON.stringify({ user, password })
+                });
+
+                adminState.authenticated = true;
+                adminState.user = response.user || user;
+                adminState.sessionToken = response.token;
+                adminState.sessionExpiresAt = Number(response.expiresAt || 0);
+                message.textContent = 'Acceso correcto al panel administrador.';
+                message.style.background = '#ecfdf5';
+                message.style.color = '#065f46';
+                showAdminStep('adminManageStep');
+                await refreshAdminConfig();
+            } catch (error) {
+                message.textContent = error.message || 'Credenciales admin inválidas.';
+                message.style.background = '#fee2e2';
+                message.style.color = '#991b1b';
+            }
+        }
+
+        async function handleAddAlly(event) {
+            event.preventDefault();
+            const input = document.getElementById('newAllyName');
+            const name = input.value.trim();
+            if (!name) {
+                return;
+            }
+
+            try {
+                await makeAdminRequest('/admin/ally-options', {
+                    method: 'POST',
+                    body: JSON.stringify({ name })
+                });
+                input.value = '';
+                await refreshAdminConfig();
+                await fetchConfig();
+                setAdminMessage(`Aliado agregado: ${name}`, 'ok');
+            } catch (error) {
+                setAdminMessage(error.message || 'No fue posible agregar el aliado', 'error');
+            }
+        }
+
+        async function handleAddAdvisor(event) {
+            event.preventDefault();
+            const input = document.getElementById('newAdvisorName');
+            const name = input.value.trim();
+            if (!name) {
+                return;
+            }
+
+            try {
+                await makeAdminRequest('/admin/advisor-options', {
+                    method: 'POST',
+                    body: JSON.stringify({ name })
+                });
+                input.value = '';
+                await refreshAdminConfig();
+                await fetchConfig();
+                setAdminMessage(`Asesor agregado: ${name}`, 'ok');
+            } catch (error) {
+                setAdminMessage(error.message || 'No fue posible agregar el asesor', 'error');
+            }
+        }
+
+        async function handleChangeAllyCredentials(event) {
+            event.preventDefault();
+
+            const payload = {
+                oldUser: document.getElementById('oldAllyUser').value.trim(),
+                oldPassword: document.getElementById('oldAllyPassword').value,
+                newUser: document.getElementById('newAllyUser').value.trim(),
+                newPassword: document.getElementById('newAllyPassword').value
+            };
+
+            try {
+                await makeAdminRequest('/admin/credentials/ally', {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+                document.getElementById('changeAllyCredentialsForm').reset();
+                await fetchConfig();
+                setAdminMessage('Credenciales de Aliados actualizadas. El login de Aliados usará estos nuevos datos.', 'ok');
+            } catch (error) {
+                setAdminMessage(error.message || 'No fue posible cambiar credenciales de aliados', 'error');
+            }
+        }
+
+        async function handleChangeAdminCredentials(event) {
+            event.preventDefault();
+
+            const payload = {
+                oldUser: document.getElementById('oldAdminUser').value.trim(),
+                oldPassword: document.getElementById('oldAdminPassword').value,
+                newUser: document.getElementById('newAdminUser').value.trim(),
+                newPassword: document.getElementById('newAdminPassword').value
+            };
+
+            try {
+                await makeAdminRequest('/admin/credentials/admin', {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+                document.getElementById('changeAdminCredentialsForm').reset();
+                adminState.authenticated = false;
+                adminState.user = '';
+                adminState.sessionToken = '';
+                adminState.sessionExpiresAt = 0;
+                showAdminStep('adminLoginStep');
+                setAdminMessage('Credenciales admin actualizadas. Debes iniciar sesión nuevamente.', 'ok');
+                showAlert('Credenciales admin actualizadas. Inicia sesión de nuevo en el panel.', 'success');
+            } catch (error) {
+                setAdminMessage(error.message || 'No fue posible cambiar credenciales de administrador', 'error');
+            }
+        }
+
+        async function handleAdminLogout() {
+            if (adminState.sessionToken) {
+                try {
+                    await makeAdminRequest('/admin/auth/logout', { method: 'POST' });
+                } catch (error) {
+                    // Ignorar errores de sesión expirada.
+                }
+            }
+
+            adminState.authenticated = false;
+            adminState.user = '';
+            adminState.sessionToken = '';
+            adminState.sessionExpiresAt = 0;
+            adminState.allyOptions = [];
+            adminState.advisorOptions = [];
+            showAdminStep('adminLoginStep');
+            closeAdminOverlay();
+        }
+
         async function handleQuoteSubmit(event) {
             event.preventDefault();
 
@@ -1555,9 +2027,17 @@
             document.getElementById('captureBtn').addEventListener('click', captureScreen);
             document.getElementById('expedirBtn').addEventListener('click', openTransferPage);
             document.getElementById('aliadosBtn').addEventListener('click', openAlliesOverlay);
+            document.getElementById('adminBtn').addEventListener('click', openAdminOverlay);
             document.getElementById('closeAlliesBtn').addEventListener('click', closeAlliesOverlay);
+            document.getElementById('closeAdminBtn').addEventListener('click', closeAdminOverlay);
             document.getElementById('alliesLoginForm').addEventListener('submit', handleAliadosLogin);
             document.getElementById('alliesSelectionForm').addEventListener('submit', handleAliadosSelection);
+            document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLogin);
+            document.getElementById('addAllyForm').addEventListener('submit', handleAddAlly);
+            document.getElementById('addAdvisorForm').addEventListener('submit', handleAddAdvisor);
+            document.getElementById('changeAllyCredentialsForm').addEventListener('submit', handleChangeAllyCredentials);
+            document.getElementById('changeAdminCredentialsForm').addEventListener('submit', handleChangeAdminCredentials);
+            document.getElementById('adminLogoutBtn').addEventListener('click', handleAdminLogout);
 
             document.getElementById('placa').addEventListener('input', event => {
                 event.target.value = event.target.value.toUpperCase();
@@ -1566,6 +2046,12 @@
             document.getElementById('alliesOverlay').addEventListener('click', event => {
                 if (event.target.id === 'alliesOverlay') {
                     closeAlliesOverlay();
+                }
+            });
+
+            document.getElementById('adminOverlay').addEventListener('click', event => {
+                if (event.target.id === 'adminOverlay') {
+                    closeAdminOverlay();
                 }
             });
 

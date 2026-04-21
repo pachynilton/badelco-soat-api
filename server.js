@@ -100,6 +100,7 @@ app.use(express.static('public'));
 
 const WORKBOOK_PATH = path.join(__dirname, 'Listado-Placas.xlsx');
 const LOCAL_NOTIFICATIONS_DIR = path.join(__dirname, 'local-notifications');
+const RUNTIME_ADMIN_CONFIG_PATH = path.join(__dirname, 'runtime-admin-config.json');
 const NOTIFICATION_EMAIL = normalizeEnvString(process.env.NOTIFICATION_EMAIL, 'info@badelco.co');
 const SAME_API_BASE_URL = ensureTrailingSlash(process.env.SAME_API_BASE_URL || process.env.API_BASE_URL || 'https://pagoalafija.co/api/public/');
 const SAME_API_KEY = process.env.SAME_API_KEY || process.env.API_KEY || '';
@@ -121,14 +122,18 @@ const RESEND_API_KEY = normalizeEnvString(process.env.RESEND_API_KEY);
 const RESEND_FROM = normalizeEnvString(process.env.RESEND_FROM, normalizeEnvString(process.env.SMTP_FROM, SMTP_USER));
 const RESEND_AUDIENCE = normalizeEnvString(process.env.RESEND_AUDIENCE, NOTIFICATION_EMAIL);
 
-const ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
-const ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
+const DEFAULT_ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', 'Aliado 05'];
+const DEFAULT_ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
 const ALLY_LOGIN_USER = String(process.env.ALLY_LOGIN_USER || '').trim();
 const ALLY_LOGIN_PASSWORD_HASH = String(process.env.ALLY_LOGIN_PASSWORD_HASH || '').trim();
+const ADMIN_LOGIN_USER = normalizeEnvString(process.env.ADMIN_LOGIN_USER, '0TtO.B4d3lc0/');
+const ADMIN_LOGIN_PASSWORD = String(process.env.ADMIN_LOGIN_PASSWORD || 'B4d3lc0.2Oz6/*');
 const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES || 30);
 const ENABLE_DEBUG_ENDPOINTS = String(process.env.ENABLE_DEBUG_ENDPOINTS || 'false') === 'true';
 const allySessions = new Map();
+const adminSessions = new Map();
 const resendClient = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+let runtimeAdminConfig = null;
 
 const plateCatalog = loadPlateCatalog();
 let sameAuthToken = '';
@@ -174,6 +179,11 @@ function hashPasswordScrypt(password, salt) {
     return crypto.scryptSync(password, salt, 64).toString('hex');
 }
 
+function createPasswordHashScrypt(password) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    return `${salt}:${hashPasswordScrypt(password, salt)}`;
+}
+
 function verifyPasswordScrypt(password, storedHash) {
     if (!storedHash || !storedHash.includes(':')) {
         return false;
@@ -209,6 +219,20 @@ function createAllySession(user) {
     return { token, expiresAt };
 }
 
+function createAdminSession(user) {
+    const token = crypto.randomBytes(48).toString('hex');
+    const now = Date.now();
+    const expiresAt = now + (SESSION_TTL_MINUTES * 60 * 1000);
+
+    adminSessions.set(token, {
+        user,
+        createdAt: now,
+        expiresAt
+    });
+
+    return { token, expiresAt };
+}
+
 function getBearerToken(req) {
     const authorizationHeader = String(req.headers.authorization || '').trim();
     const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
@@ -220,6 +244,15 @@ function cleanExpiredAllySessions() {
     for (const [token, session] of allySessions.entries()) {
         if (session.expiresAt <= now) {
             allySessions.delete(token);
+        }
+    }
+}
+
+function cleanExpiredAdminSessions() {
+    const now = Date.now();
+    for (const [token, session] of adminSessions.entries()) {
+        if (session.expiresAt <= now) {
+            adminSessions.delete(token);
         }
     }
 }
@@ -247,7 +280,153 @@ function requireAlliesSession(req, res, next) {
     return next();
 }
 
+function requireAdminSession(req, res, next) {
+    const token = getBearerToken(req);
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            message: 'Sesión admin inválida o expirada. Debes iniciar sesión nuevamente.'
+        });
+    }
+
+    const session = adminSessions.get(token);
+    if (!session || session.expiresAt <= Date.now()) {
+        adminSessions.delete(token);
+        return res.status(401).json({
+            success: false,
+            message: 'Sesión admin inválida o expirada. Debes iniciar sesión nuevamente.'
+        });
+    }
+
+    req.adminToken = token;
+    req.adminSession = session;
+    return next();
+}
+
+function normalizeOptionsList(values, fallback = []) {
+    const source = Array.isArray(values) ? values : fallback;
+    const unique = [];
+    const seen = new Set();
+
+    for (const item of source) {
+        const normalized = String(item || '').trim();
+        if (!normalized) {
+            continue;
+        }
+
+        const lower = normalized.toLowerCase();
+        if (seen.has(lower)) {
+            continue;
+        }
+
+        seen.add(lower);
+        unique.push(normalized);
+    }
+
+    return unique;
+}
+
+function buildDefaultRuntimeAdminConfig() {
+    const allyPasswordHash = ALLY_LOGIN_PASSWORD_HASH || '';
+
+    return {
+        allyOptions: normalizeOptionsList(DEFAULT_ALLY_OPTIONS),
+        advisorOptions: normalizeOptionsList(DEFAULT_ADVISOR_OPTIONS),
+        allyCredentials: {
+            user: ALLY_LOGIN_USER,
+            passwordHash: allyPasswordHash
+        },
+        adminCredentials: {
+            user: ADMIN_LOGIN_USER,
+            passwordHash: createPasswordHashScrypt(ADMIN_LOGIN_PASSWORD)
+        },
+        updatedAt: new Date().toISOString()
+    };
+}
+
+function saveRuntimeAdminConfig() {
+    if (!runtimeAdminConfig) {
+        return;
+    }
+
+    const payload = {
+        ...runtimeAdminConfig,
+        updatedAt: new Date().toISOString()
+    };
+
+    fs.writeFileSync(RUNTIME_ADMIN_CONFIG_PATH, JSON.stringify(payload, null, 2), 'utf8');
+    runtimeAdminConfig = payload;
+}
+
+function loadRuntimeAdminConfig() {
+    const fallback = buildDefaultRuntimeAdminConfig();
+
+    try {
+        if (!fs.existsSync(RUNTIME_ADMIN_CONFIG_PATH)) {
+            runtimeAdminConfig = fallback;
+            saveRuntimeAdminConfig();
+            return runtimeAdminConfig;
+        }
+
+        const raw = fs.readFileSync(RUNTIME_ADMIN_CONFIG_PATH, 'utf8');
+        const parsed = JSON.parse(raw);
+
+        runtimeAdminConfig = {
+            allyOptions: normalizeOptionsList(parsed.allyOptions, fallback.allyOptions),
+            advisorOptions: normalizeOptionsList(parsed.advisorOptions, fallback.advisorOptions),
+            allyCredentials: {
+                user: normalizeEnvString(parsed?.allyCredentials?.user, fallback.allyCredentials.user),
+                passwordHash: normalizeEnvString(parsed?.allyCredentials?.passwordHash, fallback.allyCredentials.passwordHash)
+            },
+            adminCredentials: {
+                user: normalizeEnvString(parsed?.adminCredentials?.user, fallback.adminCredentials.user),
+                passwordHash: normalizeEnvString(parsed?.adminCredentials?.passwordHash, fallback.adminCredentials.passwordHash)
+            },
+            updatedAt: parsed?.updatedAt || fallback.updatedAt
+        };
+
+        if (!runtimeAdminConfig.adminCredentials.passwordHash) {
+            runtimeAdminConfig.adminCredentials.passwordHash = fallback.adminCredentials.passwordHash;
+            saveRuntimeAdminConfig();
+        }
+
+        return runtimeAdminConfig;
+    } catch (error) {
+        console.error('❌ No se pudo leer runtime-admin-config.json. Se usarán valores por defecto:', error.message);
+        runtimeAdminConfig = fallback;
+        saveRuntimeAdminConfig();
+        return runtimeAdminConfig;
+    }
+}
+
+function getAllyOptions() {
+    return runtimeAdminConfig?.allyOptions || [];
+}
+
+function getAdvisorOptions() {
+    return runtimeAdminConfig?.advisorOptions || [];
+}
+
+function isAllyLoginConfigured() {
+    const user = normalizeEnvString(runtimeAdminConfig?.allyCredentials?.user);
+    const passwordHash = normalizeEnvString(runtimeAdminConfig?.allyCredentials?.passwordHash);
+    return Boolean(user && passwordHash);
+}
+
+function verifyAllyCredentials(user, password) {
+    if (!isAllyLoginConfigured()) {
+        return false;
+    }
+
+    const expectedUser = normalizeEnvString(runtimeAdminConfig.allyCredentials.user);
+    const storedHash = normalizeEnvString(runtimeAdminConfig.allyCredentials.passwordHash);
+    return user === expectedUser && verifyPasswordScrypt(password, storedHash);
+}
+
+runtimeAdminConfig = loadRuntimeAdminConfig();
+
 setInterval(cleanExpiredAllySessions, 10 * 60 * 1000).unref();
+setInterval(cleanExpiredAdminSessions, 10 * 60 * 1000).unref();
 
 if (!API_KEY || !SECRET_KEY) {
     console.error('❌ ERROR: Debes configurar API_KEY y SECRET_KEY en variables de entorno');
@@ -256,7 +435,7 @@ if (!API_KEY || !SECRET_KEY) {
     }
 }
 
-if (!ALLY_LOGIN_USER || !ALLY_LOGIN_PASSWORD_HASH) {
+if (!isAllyLoginConfigured()) {
     console.warn('⚠️ Login de aliados no configurado. Define ALLY_LOGIN_USER y ALLY_LOGIN_PASSWORD_HASH');
 }
 
@@ -272,7 +451,8 @@ console.log('- Resend configurado:', isResendConfigured());
 console.log('- SMTP configurado:', Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS));
 console.log('- SMTP host/port/secure:', `${SMTP_HOST}:${SMTP_PORT} secure=${SMTP_SECURE}`);
 console.log('- SMTP intentos/timeout:', `${SMTP_SEND_ATTEMPTS} intentos, ${SMTP_SEND_TIMEOUT_MS}ms timeout`);
-console.log('- Login aliados configurado:', Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH));
+console.log('- Login aliados configurado:', isAllyLoginConfigured());
+console.log('- Panel admin configurado:', Boolean(runtimeAdminConfig?.adminCredentials?.user));
 
 function ensureTrailingSlash(url) {
     return url.endsWith('/') ? url : `${url}/`;
@@ -1175,11 +1355,11 @@ app.get('/api/config', (req, res) => {
         sameConfigured: isSameConfigured(),
         requireListedPlates: REQUIRE_LISTED_PLATES,
         smtpConfigured: isSmtpConfigured(),
-        allyAuthConfigured: Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH),
+        allyAuthConfigured: isAllyLoginConfigured(),
         sessionTtlMinutes: SESSION_TTL_MINUTES,
         notificationEmail: NOTIFICATION_EMAIL,
-        allyOptions: ALLY_OPTIONS,
-        advisorOptions: ADVISOR_OPTIONS,
+        allyOptions: getAllyOptions(),
+        advisorOptions: getAdvisorOptions(),
         listedPlates: plateCatalog.size
     });
 });
@@ -1195,15 +1375,15 @@ app.post('/api/auth/login', (req, res) => {
         });
     }
 
-    if (!ALLY_LOGIN_USER || !ALLY_LOGIN_PASSWORD_HASH) {
+    if (!isAllyLoginConfigured()) {
         return res.status(503).json({
             success: false,
             message: 'El inicio de sesión no está configurado en el servidor'
         });
     }
 
-    const userValid = user === ALLY_LOGIN_USER;
-    const passwordValid = verifyPasswordScrypt(password, ALLY_LOGIN_PASSWORD_HASH);
+    const userValid = user === runtimeAdminConfig.allyCredentials.user;
+    const passwordValid = verifyPasswordScrypt(password, runtimeAdminConfig.allyCredentials.passwordHash);
 
     if (!userValid || !passwordValid) {
         return res.status(401).json({
@@ -1226,6 +1406,200 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/logout', requireAlliesSession, (req, res) => {
     allySessions.delete(req.allyToken);
     return res.json({ success: true });
+});
+
+app.post('/api/admin/auth/login', authLimiter, (req, res) => {
+    const user = String(req.body?.user || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!user || !password) {
+        return res.status(400).json({
+            success: false,
+            message: 'Usuario y contraseña admin son obligatorios'
+        });
+    }
+
+    const expectedUser = normalizeEnvString(runtimeAdminConfig?.adminCredentials?.user);
+    const expectedPasswordHash = normalizeEnvString(runtimeAdminConfig?.adminCredentials?.passwordHash);
+
+    if (!expectedUser || !expectedPasswordHash) {
+        return res.status(503).json({
+            success: false,
+            message: 'El panel admin no está configurado en el servidor'
+        });
+    }
+
+    const userValid = user === expectedUser;
+    const passwordValid = verifyPasswordScrypt(password, expectedPasswordHash);
+
+    if (!userValid || !passwordValid) {
+        return res.status(401).json({
+            success: false,
+            message: 'Credenciales admin inválidas'
+        });
+    }
+
+    const { token, expiresAt } = createAdminSession(user);
+
+    return res.json({
+        success: true,
+        token,
+        tokenType: 'Bearer',
+        expiresAt,
+        user
+    });
+});
+
+app.post('/api/admin/auth/logout', requireAdminSession, (req, res) => {
+    adminSessions.delete(req.adminToken);
+    return res.json({ success: true });
+});
+
+app.get('/api/admin/config', requireAdminSession, (req, res) => {
+    return res.json({
+        success: true,
+        allyOptions: getAllyOptions(),
+        advisorOptions: getAdvisorOptions(),
+        allyUser: runtimeAdminConfig?.allyCredentials?.user || '',
+        adminUser: runtimeAdminConfig?.adminCredentials?.user || '',
+        updatedAt: runtimeAdminConfig?.updatedAt || null
+    });
+});
+
+app.post('/api/admin/ally-options', requireAdminSession, (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+        return res.status(400).json({ success: false, message: 'El nombre del aliado es obligatorio' });
+    }
+
+    const exists = getAllyOptions().some(item => item.toLowerCase() === name.toLowerCase());
+    if (exists) {
+        return res.status(409).json({ success: false, message: 'El aliado ya existe' });
+    }
+
+    runtimeAdminConfig.allyOptions = normalizeOptionsList([...getAllyOptions(), name]);
+    saveRuntimeAdminConfig();
+    return res.json({ success: true, allyOptions: getAllyOptions() });
+});
+
+app.delete('/api/admin/ally-options/:name', requireAdminSession, (req, res) => {
+    const target = String(req.params?.name || '').trim().toLowerCase();
+    if (!target) {
+        return res.status(400).json({ success: false, message: 'Aliado inválido' });
+    }
+
+    const updated = getAllyOptions().filter(item => item.toLowerCase() !== target);
+    if (updated.length === getAllyOptions().length) {
+        return res.status(404).json({ success: false, message: 'Aliado no encontrado' });
+    }
+
+    runtimeAdminConfig.allyOptions = updated;
+    saveRuntimeAdminConfig();
+    return res.json({ success: true, allyOptions: getAllyOptions() });
+});
+
+app.post('/api/admin/advisor-options', requireAdminSession, (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+        return res.status(400).json({ success: false, message: 'El nombre del asesor es obligatorio' });
+    }
+
+    const exists = getAdvisorOptions().some(item => item.toLowerCase() === name.toLowerCase());
+    if (exists) {
+        return res.status(409).json({ success: false, message: 'El asesor ya existe' });
+    }
+
+    runtimeAdminConfig.advisorOptions = normalizeOptionsList([...getAdvisorOptions(), name]);
+    saveRuntimeAdminConfig();
+    return res.json({ success: true, advisorOptions: getAdvisorOptions() });
+});
+
+app.delete('/api/admin/advisor-options/:name', requireAdminSession, (req, res) => {
+    const target = String(req.params?.name || '').trim().toLowerCase();
+    if (!target) {
+        return res.status(400).json({ success: false, message: 'Asesor inválido' });
+    }
+
+    const updated = getAdvisorOptions().filter(item => item.toLowerCase() !== target);
+    if (updated.length === getAdvisorOptions().length) {
+        return res.status(404).json({ success: false, message: 'Asesor no encontrado' });
+    }
+
+    runtimeAdminConfig.advisorOptions = updated;
+    saveRuntimeAdminConfig();
+    return res.json({ success: true, advisorOptions: getAdvisorOptions() });
+});
+
+app.put('/api/admin/credentials/ally', requireAdminSession, (req, res) => {
+    const oldUser = String(req.body?.oldUser || '').trim();
+    const oldPassword = String(req.body?.oldPassword || '');
+    const newUser = String(req.body?.newUser || '').trim();
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!newUser || !newPassword) {
+        return res.status(400).json({ success: false, message: 'Nuevo usuario y contraseña de aliados son obligatorios' });
+    }
+
+    const allyConfigured = isAllyLoginConfigured();
+    if (allyConfigured && !verifyAllyCredentials(oldUser, oldPassword)) {
+        return res.status(401).json({
+            success: false,
+            message: 'Las credenciales antiguas de aliados no son válidas'
+        });
+    }
+
+    runtimeAdminConfig.allyCredentials = {
+        user: newUser,
+        passwordHash: createPasswordHashScrypt(newPassword)
+    };
+    saveRuntimeAdminConfig();
+    allySessions.clear();
+
+    return res.json({
+        success: true,
+        message: allyConfigured
+            ? 'Credenciales de aliados actualizadas correctamente'
+            : 'Credenciales de aliados configuradas correctamente',
+        allyUser: newUser
+    });
+});
+
+app.put('/api/admin/credentials/admin', requireAdminSession, (req, res) => {
+    const oldUser = String(req.body?.oldUser || '').trim();
+    const oldPassword = String(req.body?.oldPassword || '');
+    const newUser = String(req.body?.newUser || '').trim();
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!oldUser || !oldPassword || !newUser || !newPassword) {
+        return res.status(400).json({
+            success: false,
+            message: 'Debes enviar credenciales antiguas y nuevas del administrador'
+        });
+    }
+
+    const expectedUser = normalizeEnvString(runtimeAdminConfig?.adminCredentials?.user);
+    const expectedPasswordHash = normalizeEnvString(runtimeAdminConfig?.adminCredentials?.passwordHash);
+    const oldValid = oldUser === expectedUser && verifyPasswordScrypt(oldPassword, expectedPasswordHash);
+
+    if (!oldValid) {
+        return res.status(401).json({
+            success: false,
+            message: 'Las credenciales antiguas del administrador no son válidas'
+        });
+    }
+
+    runtimeAdminConfig.adminCredentials = {
+        user: newUser,
+        passwordHash: createPasswordHashScrypt(newPassword)
+    };
+    saveRuntimeAdminConfig();
+    adminSessions.clear();
+
+    return res.json({
+        success: true,
+        message: 'Credenciales del administrador actualizadas. Inicia sesión nuevamente.',
+        adminUser: newUser
+    });
 });
 
 app.get('/api/plates/:placa', (req, res) => {
@@ -1271,7 +1645,7 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             });
         }
 
-        if (!ALLY_OPTIONS.includes(aliado) || !ADVISOR_OPTIONS.includes(asesor)) {
+        if (!getAllyOptions().includes(aliado) || !getAdvisorOptions().includes(asesor)) {
             const notification = sendFailedNotification('Aliado o asesor inválido');
             return res.status(400).json({
                 success: false,
@@ -1620,7 +1994,7 @@ app.get('/api/info', (req, res) => {
         server: 'Badelco SOAT API - Credenciales Correctas',
         timestamp: new Date().toISOString(),
         credentialsConfigured: Boolean(API_KEY && SECRET_KEY),
-        allyAuthConfigured: Boolean(ALLY_LOGIN_USER && ALLY_LOGIN_PASSWORD_HASH),
+        allyAuthConfigured: isAllyLoginConfigured(),
         token: {
             hasCurrentToken: Boolean(currentToken),
             type: isUsingFixedToken ? 'FIJO' : 'GENERADO',
@@ -1630,6 +2004,7 @@ app.get('/api/info', (req, res) => {
             test: 'GET /api/test - Test simple',
             testGenerateToken: 'POST /api/test-generate-token - Generar token',
             cotizar: 'POST /api/cotizar - Cotización SOAT',
+            authAdminLogin: 'POST /api/admin/auth/login - Login administrador',
             info: 'GET /api/info'
         }
     });
