@@ -1238,6 +1238,27 @@
                 .concat(options.map(option => `<option value="${option}">${option}</option>`))
                 .join('');
         }
+
+        function renderBackendFlags() {
+            const flags = document.getElementById('backendFlags');
+            if (!flags) {
+                return;
+            }
+
+            const items = [];
+            if (appConfig.sameConfigured) {
+                items.push('<span class="flag-pill is-ok">SAME configurado</span>');
+            } else {
+                items.push('<span class="flag-pill is-warn">SAME pendiente</span>');
+            }
+
+            if (appConfig.smtpConfigured) {
+                items.push('<span class="flag-pill is-ok">SMTP activo</span>');
+            }
+
+            flags.innerHTML = items.join('');
+        }
+
     
 
         function showAlliesStep(stepId) {
@@ -1395,11 +1416,16 @@
                 appConfig = data;
             } catch (error) {
                 console.error('No fue posible cargar configuración del backend:', error);
-            } finally {
+            }
+            try {
                 renderOptions('allySelect', appConfig.allyOptions, 'Seleccione un aliado');
                 renderOptions('advisorSelect', appConfig.advisorOptions, 'Seleccione un asesor');
-                renderBackendFlags();
+                if (typeof renderBackendFlags === 'function') {
+                    renderBackendFlags();
+                }
                 updateAllyStatus();
+            } catch (uiError) {
+                console.error('Error al actualizar la UI de config:', uiError);
             }
         }
 
