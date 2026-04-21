@@ -60,6 +60,16 @@ const authLimiter = rateLimit({
 
 app.use('/api/auth/login', authLimiter);
 
+const adminAuthLimiter = rateLimit({
+    windowMs: 30 * 60 * 1000,
+    max: 5,
+    message: 'Demasiados intentos de acceso al panel administrador, intenta más tarde',
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+app.use('/api/admin/auth/login', adminAuthLimiter);
+
 // Middleware para logs de seguridad
 app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
@@ -126,8 +136,8 @@ const DEFAULT_ALLY_OPTIONS = ['SUMOTO', 'Aliado 02', 'Aliado 03', 'Aliado 04', '
 const DEFAULT_ADVISOR_OPTIONS = ['01.SUMOTO JOHANA', '02.SUMOTO CAROLINA', 'Asesor 03', 'Asesor 04', 'Asesor 05'];
 const ALLY_LOGIN_USER = String(process.env.ALLY_LOGIN_USER || '').trim();
 const ALLY_LOGIN_PASSWORD_HASH = String(process.env.ALLY_LOGIN_PASSWORD_HASH || '').trim();
-const ADMIN_LOGIN_USER = normalizeEnvString(process.env.ADMIN_LOGIN_USER, '0TtO.B4d3lc0/');
-const ADMIN_LOGIN_PASSWORD = String(process.env.ADMIN_LOGIN_PASSWORD || 'B4d3lc0.2Oz6/*');
+const ADMIN_LOGIN_USER = String(process.env.ADMIN_LOGIN_USER || '').trim();
+const ADMIN_LOGIN_PASSWORD_HASH = String(process.env.ADMIN_LOGIN_PASSWORD_HASH || '').trim();
 const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES || 30);
 const ENABLE_DEBUG_ENDPOINTS = String(process.env.ENABLE_DEBUG_ENDPOINTS || 'false') === 'true';
 const allySessions = new Map();
@@ -328,6 +338,7 @@ function normalizeOptionsList(values, fallback = []) {
 
 function buildDefaultRuntimeAdminConfig() {
     const allyPasswordHash = ALLY_LOGIN_PASSWORD_HASH || '';
+    const adminPasswordHash = ADMIN_LOGIN_PASSWORD_HASH || '';
 
     return {
         allyOptions: normalizeOptionsList(DEFAULT_ALLY_OPTIONS),
@@ -338,7 +349,7 @@ function buildDefaultRuntimeAdminConfig() {
         },
         adminCredentials: {
             user: ADMIN_LOGIN_USER,
-            passwordHash: createPasswordHashScrypt(ADMIN_LOGIN_PASSWORD)
+            passwordHash: adminPasswordHash
         },
         updatedAt: new Date().toISOString()
     };
@@ -423,6 +434,22 @@ function verifyAllyCredentials(user, password) {
     return user === expectedUser && verifyPasswordScrypt(password, storedHash);
 }
 
+function isAdminLoginConfigured() {
+    const user = normalizeEnvString(runtimeAdminConfig?.adminCredentials?.user);
+    const passwordHash = normalizeEnvString(runtimeAdminConfig?.adminCredentials?.passwordHash);
+    return Boolean(user && passwordHash);
+}
+
+function isStrongPassword(value) {
+    const password = String(value || '');
+    const meetsLength = password.length >= 12;
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
+    const hasDigit = /\d/.test(password);
+    const hasSymbol = /[^A-Za-z0-9]/.test(password);
+    return meetsLength && hasUpper && hasLower && hasDigit && hasSymbol;
+}
+
 runtimeAdminConfig = loadRuntimeAdminConfig();
 
 setInterval(cleanExpiredAllySessions, 10 * 60 * 1000).unref();
@@ -439,6 +466,10 @@ if (!isAllyLoginConfigured()) {
     console.warn('⚠️ Login de aliados no configurado. Define ALLY_LOGIN_USER y ALLY_LOGIN_PASSWORD_HASH');
 }
 
+if (!isAdminLoginConfigured()) {
+    console.warn('⚠️ Panel admin no configurado. Define ADMIN_LOGIN_USER y ADMIN_LOGIN_PASSWORD_HASH');
+}
+
 console.log('🔧 Configuración con credenciales correctas:');
 console.log('- API URL:', API_BASE_URL);
 console.log('- API URL candidates:', LEGACY_API_BASE_CANDIDATES.join(' | '));
@@ -452,7 +483,7 @@ console.log('- SMTP configurado:', Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS))
 console.log('- SMTP host/port/secure:', `${SMTP_HOST}:${SMTP_PORT} secure=${SMTP_SECURE}`);
 console.log('- SMTP intentos/timeout:', `${SMTP_SEND_ATTEMPTS} intentos, ${SMTP_SEND_TIMEOUT_MS}ms timeout`);
 console.log('- Login aliados configurado:', isAllyLoginConfigured());
-console.log('- Panel admin configurado:', Boolean(runtimeAdminConfig?.adminCredentials?.user));
+console.log('- Panel admin configurado:', isAdminLoginConfigured());
 
 function ensureTrailingSlash(url) {
     return url.endsWith('/') ? url : `${url}/`;
@@ -1408,7 +1439,7 @@ app.post('/api/auth/logout', requireAlliesSession, (req, res) => {
     return res.json({ success: true });
 });
 
-app.post('/api/admin/auth/login', authLimiter, (req, res) => {
+app.post('/api/admin/auth/login', (req, res) => {
     const user = String(req.body?.user || '').trim();
     const password = String(req.body?.password || '');
 
@@ -1540,6 +1571,20 @@ app.put('/api/admin/credentials/ally', requireAdminSession, (req, res) => {
         return res.status(400).json({ success: false, message: 'Nuevo usuario y contraseña de aliados son obligatorios' });
     }
 
+    if (!isStrongPassword(newPassword)) {
+        return res.status(400).json({
+            success: false,
+            message: 'La nueva contraseña de aliados debe tener mínimo 12 caracteres e incluir mayúscula, minúscula, número y símbolo'
+        });
+    }
+
+    if (oldUser === newUser && oldPassword === newPassword) {
+        return res.status(400).json({
+            success: false,
+            message: 'Las nuevas credenciales de aliados deben ser diferentes a las actuales'
+        });
+    }
+
     const allyConfigured = isAllyLoginConfigured();
     if (allyConfigured && !verifyAllyCredentials(oldUser, oldPassword)) {
         return res.status(401).json({
@@ -1574,6 +1619,20 @@ app.put('/api/admin/credentials/admin', requireAdminSession, (req, res) => {
         return res.status(400).json({
             success: false,
             message: 'Debes enviar credenciales antiguas y nuevas del administrador'
+        });
+    }
+
+    if (!isStrongPassword(newPassword)) {
+        return res.status(400).json({
+            success: false,
+            message: 'La nueva contraseña admin debe tener mínimo 12 caracteres e incluir mayúscula, minúscula, número y símbolo'
+        });
+    }
+
+    if (oldUser === newUser && oldPassword === newPassword) {
+        return res.status(400).json({
+            success: false,
+            message: 'Las nuevas credenciales admin deben ser diferentes a las actuales'
         });
     }
 
