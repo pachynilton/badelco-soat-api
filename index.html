@@ -1674,6 +1674,9 @@
                 return;
             }
 
+            const precio = getQuotePrice(lastQuoteData);
+            const total = precio + 20000;
+
             const params = new URLSearchParams({
                 placa,
                 documentType,
