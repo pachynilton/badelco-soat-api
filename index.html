@@ -792,6 +792,67 @@
             margin-top: 6px;
         }
 
+        .vigency-alert-card {
+            width: min(100%, 520px);
+        }
+
+        .vigency-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .vigency-pill.is-valid {
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .vigency-pill.is-expired {
+            background: #fff1f2;
+            color: #9f1239;
+            border: 1px solid rgba(244, 63, 94, 0.25);
+        }
+
+        .vigency-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 18px 0;
+        }
+
+        .vigency-box {
+            border-radius: 14px;
+            padding: 14px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+
+        .vigency-box strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--primary-color);
+            font-size: 14px;
+        }
+
+        .vigency-box span {
+            color: var(--text-light);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .vigency-copy {
+            font-size: 14px;
+            color: var(--text-light);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
         @media (max-width: 768px) {
             .admin-grid {
                 grid-template-columns: 1fr;
@@ -802,6 +863,10 @@
             }
 
             .expedition-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .vigency-summary {
                 grid-template-columns: 1fr;
             }
 
@@ -877,28 +942,6 @@
                             class="form-input" 
                             placeholder="1234567890"
                             required
-                        >
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="email">Email (respaldo para expedición)</label>
-                        <input
-                            type="email"
-                            id="email"
-                            name="email"
-                            class="form-input"
-                            placeholder="correo@dominio.com"
-                        >
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="telefono">Celular (respaldo para expedición)</label>
-                        <input
-                            type="tel"
-                            id="telefono"
-                            name="telefono"
-                            class="form-input"
-                            placeholder="3001234567"
                         >
                     </div>
 
@@ -1129,6 +1172,37 @@
                 <div class="credential-hint" id="expeditionMessage">
                     Revisa la información antes de emitir. Los datos del tomador son editables.
                 </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="overlay-page" id="vigencyOverlay" aria-hidden="true">
+        <div class="overlay-card vigency-alert-card">
+            <button type="button" class="overlay-close" id="closeVigencyBtn" aria-label="Cerrar">×</button>
+
+            <section class="overlay-step is-active">
+                <h2 class="overlay-title">Vigencia del SOAT</h2>
+                <div id="vigencyStatusPill" class="vigency-pill">Estado</div>
+                <p class="vigency-copy" id="vigencyMainCopy"></p>
+
+                <div class="vigency-summary">
+                    <div class="vigency-box">
+                        <strong>Inicio de vigencia</strong>
+                        <span id="vigencyStartDate">-</span>
+                    </div>
+                    <div class="vigency-box">
+                        <strong>Fin de vigencia</strong>
+                        <span id="vigencyEndDate">-</span>
+                    </div>
+                </div>
+
+                <div class="credential-hint" id="vigencySecondaryCopy">
+                    Verifica estas fechas antes de continuar con el pago o con la expedición.
+                </div>
+
+                <button type="button" class="btn btn-primary" id="acceptVigencyBtn">
+                    <span>Entendido</span>
+                </button>
             </section>
         </div>
     </div>
@@ -1630,6 +1704,61 @@
             });
         }
 
+        function openVigencyOverlay() {
+            const overlay = document.getElementById('vigencyOverlay');
+            overlay.classList.add('is-open');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeVigencyOverlay() {
+            const overlay = document.getElementById('vigencyOverlay');
+            overlay.classList.remove('is-open');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function getCurrentSoatStatus(data) {
+            const originalResponse = data.debug?.originalResponse || {};
+            const hasCurrentPolicy = Boolean(
+                originalResponse.coexist ||
+                originalResponse.data?.coexist?.Success ||
+                /p[oó]lizas vigentes|vigencia de la p[oó]liza caduca/i.test(String(originalResponse.message || ''))
+            );
+
+            if (hasCurrentPolicy) {
+                return {
+                    key: 'valid',
+                    label: 'SOAT actualmente vigente',
+                    message: 'El vehículo registra una póliza vigente. La nueva vigencia cotizada comenzará cuando termine la vigencia actual.'
+                };
+            }
+
+            return {
+                key: 'expired',
+                label: 'SOAT vencido o sin vigencia actual',
+                message: 'El vehículo no registra una póliza vigente al momento de la cotización. La vigencia cotizada corresponde al nuevo período de cobertura.'
+            };
+        }
+
+        function showVigencyPopup(data) {
+            const status = getCurrentSoatStatus(data);
+            const statusPill = document.getElementById('vigencyStatusPill');
+            const mainCopy = document.getElementById('vigencyMainCopy');
+            const startDate = document.getElementById('vigencyStartDate');
+            const endDate = document.getElementById('vigencyEndDate');
+            const secondaryCopy = document.getElementById('vigencySecondaryCopy');
+
+            statusPill.textContent = status.label;
+            statusPill.className = `vigency-pill ${status.key === 'valid' ? 'is-valid' : 'is-expired'}`;
+            mainCopy.textContent = status.message;
+            startDate.textContent = formatDate(data.inicioVigencia || new Date());
+            endDate.textContent = formatDate(data.finVigencia || addYear(new Date()));
+            secondaryCopy.textContent = status.key === 'valid'
+                ? 'La fecha de inicio mostrada corresponde al momento en que entrará a regir la nueva póliza cotizada.'
+                : 'La cobertura cotizada inicia en la fecha indicada y debe revisarse antes de continuar con el proceso.';
+
+            openVigencyOverlay();
+        }
+
         function addYear(date) {
             const newDate = new Date(date);
             newDate.setFullYear(newDate.getFullYear() + 1);
@@ -1719,6 +1848,7 @@
 
             resultsDiv.style.display = 'block';
             updateAllyStatus();
+            showVigencyPopup(data);
         }
 
         async function captureScreen() {
@@ -1823,8 +1953,8 @@
             const placa = normalizeUpperText(document.getElementById('placa').value);
             const documentType = normalizeText(document.getElementById('documentType').value);
             const documentNumber = normalizeText(document.getElementById('documentNumber').value);
-            const email = normalizeText(document.getElementById('email').value);
-            const telefono = normalizeText(document.getElementById('telefono').value);
+            const email = '';
+            const telefono = '';
 
             return { placa, documentType, documentNumber, email, telefono };
         }
@@ -2299,9 +2429,7 @@
             const formData = {
                 placa: form.placa.value.toUpperCase(),
                 documentType: form.documentType.value,
-                documentNumber: form.documentNumber.value,
-                email: form.email.value,
-                telefono: form.telefono.value
+                documentNumber: form.documentNumber.value
             };
 
             showDebugInfo(`Enviando solicitud a: ${PROXY_URL}/cotizar`, formData);
@@ -2341,6 +2469,8 @@
                 closeAlliesOverlay();
                 openAdminOverlay();
             });
+            document.getElementById('closeVigencyBtn').addEventListener('click', closeVigencyOverlay);
+            document.getElementById('acceptVigencyBtn').addEventListener('click', closeVigencyOverlay);
             document.getElementById('closeAlliesBtn').addEventListener('click', closeAlliesOverlay);
             document.getElementById('closeAdminBtn').addEventListener('click', closeAdminOverlay);
             document.getElementById('alliesLoginForm').addEventListener('submit', handleAliadosLogin);
@@ -2364,6 +2494,12 @@
             document.getElementById('alliesOverlay').addEventListener('click', event => {
                 if (event.target.id === 'alliesOverlay') {
                     closeAlliesOverlay();
+                }
+            });
+
+            document.getElementById('vigencyOverlay').addEventListener('click', event => {
+                if (event.target.id === 'vigencyOverlay') {
+                    closeVigencyOverlay();
                 }
             });
 
