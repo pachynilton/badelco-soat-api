@@ -110,7 +110,7 @@ app.use(express.static('public'));
 
 const WORKBOOK_PATH = path.join(__dirname, 'Listado-Placas.xlsx');
 const LOCAL_NOTIFICATIONS_DIR = path.join(__dirname, 'local-notifications');
-const RUNTIME_ADMIN_CONFIG_PATH = path.join(__dirname, 'runtime-admin-config.json');
+const RUNTIME_ADMIN_CONFIG_PATH = process.env.RUNTIME_CONFIG_PATH || path.join(__dirname, 'runtime-admin-config.json');
 const NOTIFICATION_EMAIL = normalizeEnvString(process.env.NOTIFICATION_EMAIL, 'info@badelco.co');
 const SAME_API_BASE_URL = ensureTrailingSlash(process.env.SAME_API_BASE_URL || process.env.API_BASE_URL || 'https://pagoalafija.co/api/public/');
 const SAME_API_KEY = process.env.SAME_API_KEY || process.env.API_KEY || '';
@@ -931,30 +931,39 @@ function getTomorrowDate() {
     return date.toISOString();
 }
 
-function normalizeSameFromValidateDate(value) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const maxAllowed = new Date(today);
-    maxAllowed.setDate(maxAllowed.getDate() + 30);
-
+function normalizeSameDate(value, fallbackIsoDate = getTomorrowDate()) {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
-        return getTomorrowDate();
+        return fallbackIsoDate;
     }
 
     parsed.setHours(0, 0, 0, 0);
-
-    if (parsed > maxAllowed) {
-        console.warn('⚠️ SAME devolvió FromValidateDate fuera de rango (>30 días). Se ajusta al máximo permitido.');
-        return maxAllowed.toISOString();
-    }
-
-    if (parsed < today) {
-        return getTomorrowDate();
-    }
-
     return parsed.toISOString();
+}
+
+function extractSameExpirationDates(cotizacionData = {}) {
+    const expiration = cotizacionData.data?.Expiration || cotizacionData.Expiration || {};
+    const fromValidateDateRaw = expiration.FromValidateDate || cotizacionData.FromValidateDate || getTomorrowDate();
+    const fromValidateDate = normalizeSameDate(fromValidateDateRaw, getTomorrowDate());
+
+    const oneYearLater = new Date(fromValidateDate);
+    oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+
+    const dueValidateDateRaw = expiration.DueValidateDate || cotizacionData.DueValidateDate || oneYearLater.toISOString();
+    const dueValidateDate = normalizeSameDate(dueValidateDateRaw, oneYearLater.toISOString());
+
+    return {
+        fromValidateDate,
+        dueValidateDate
+    };
+}
+
+function sanitizeSameDocumentNumber(value, documentType) {
+    const normalized = String(value || '').trim();
+    if (String(documentType || '').toUpperCase() === 'NIT') {
+        return normalized.replace(/-/g, '');
+    }
+    return normalized;
 }
 
 function getNationalOperationCardId(plateMetadata) {
@@ -970,32 +979,45 @@ function getNationalOperationCardId(plateMetadata) {
     return null;
 }
 
-function buildContactFromTomador(tomador = {}, documentType, documentNumber, fallbackContact = {}) {
-    const address = tomador.Address || tomador.address || tomador.Direccion || tomador.direccion || tomador?.Address?.Description || tomador?.Address?.Address || '';
-    const cityId = tomador.CityId || tomador.cityId || tomador?.Address?.CityId || tomador?.Address?.cityId || '';
-    const stateId = tomador.StateId || tomador.stateId || tomador?.Address?.StateId || tomador?.Address?.stateId || '';
-    const email = tomador.Email || tomador.email || fallbackContact.Email || '';
-    const cellular = tomador.Cellular || tomador.cellular || tomador.Phone || tomador.phone || fallbackContact.Cellular || '';
-    const firstName = tomador.FirstName || tomador.firstName || tomador.Name || '';
-    const lastName = tomador.LastName || tomador.lastName || tomador.LastNames || '';
+function buildContactFromTomador(tomador = {}, documentType, documentNumber, fallbackContact = {}, emissionForm = {}) {
+    const normalizedDocumentType = String(emissionForm.documentType || documentType || '').trim().toUpperCase();
+    const normalizedDocumentNumber = sanitizeSameDocumentNumber(emissionForm.documentNumber || documentNumber, normalizedDocumentType);
+    const isNit = normalizedDocumentType === 'NIT';
+
+    const address = emissionForm.address || tomador.Address || tomador.address || tomador.Direccion || tomador.direccion || tomador?.Address?.Description || tomador?.Address?.Address || fallbackContact.Address || '';
+    const cityId = emissionForm.cityId || tomador.CityId || tomador.cityId || tomador?.Address?.CityId || tomador?.Address?.cityId || fallbackContact.CityId || '';
+    const stateId = emissionForm.stateId || tomador.StateId || tomador.stateId || tomador?.Address?.StateId || tomador?.Address?.stateId || fallbackContact.StateId || '';
+    const email = emissionForm.email || tomador.Email || tomador.email || fallbackContact.Email || '';
+    const cellular = emissionForm.cellular || tomador.Cellular || tomador.cellular || tomador.Phone || tomador.phone || fallbackContact.Cellular || '';
+    const firstName = emissionForm.firstName || tomador.FirstName || tomador.firstName || tomador.Name || '';
+    const firstName1 = emissionForm.firstName1 || tomador.FirstName1 || tomador.firstName1 || '';
+    const lastName = emissionForm.lastName || tomador.LastName || tomador.lastName || tomador.LastNames || '';
+    const lastName1 = emissionForm.lastName1 || tomador.LastName1 || tomador.lastName1 || '';
+    const companyName = emissionForm.companyName || '';
+
+    const resolvedLastName = isNit ? (companyName || lastName) : lastName;
 
     const contact = {
         Address: String(address).trim(),
         CityId: String(cityId).trim(),
         StateId: String(stateId).trim(),
         Cellular: String(cellular).trim(),
-        DocumentNumber: String(documentNumber).trim(),
-        DocumentTypeId: getSameDocumentTypeCode(documentType),
+        DocumentNumber: String(normalizedDocumentNumber).trim(),
+        DocumentTypeId: getSameDocumentTypeCode(normalizedDocumentType),
         Email: String(email).trim(),
-        FirstName: String(firstName).trim(),
-        FirstName1: String(tomador.FirstName1 || tomador.firstName1 || '').trim(),
-        LastName: String(lastName).trim(),
-        LastName1: String(tomador.LastName1 || tomador.lastName1 || '').trim(),
+        FirstName: isNit ? null : String(firstName).trim(),
+        FirstName1: isNit ? null : String(firstName1).trim(),
+        LastName: String(resolvedLastName).trim(),
+        LastName1: isNit ? '' : String(lastName1).trim(),
         Phone: String(tomador.Phone || tomador.phone || '').trim()
     };
 
+    const requiredKeys = isNit
+        ? ['Address', 'CityId', 'StateId', 'Cellular', 'Email', 'LastName', 'DocumentNumber']
+        : ['Address', 'CityId', 'StateId', 'Cellular', 'Email', 'FirstName', 'LastName', 'DocumentNumber'];
+
     const missingFields = Object.entries(contact)
-        .filter(([key, value]) => ['Address', 'CityId', 'StateId', 'Cellular', 'Email', 'FirstName', 'LastName'].includes(key) && !value)
+        .filter(([key, value]) => requiredKeys.includes(key) && !value)
         .map(([key]) => key);
 
     return { contact, missingFields };
@@ -1044,14 +1066,7 @@ function extractSameTariff(cotizacionData = {}, publicTariffData = null) {
 }
 
 function extractSameFromValidateDate(cotizacionData = {}) {
-    const fromValidateDate = (
-        cotizacionData.data?.Expiration?.FromValidateDate ||
-        cotizacionData.Expiration?.FromValidateDate ||
-        cotizacionData.FromValidateDate ||
-        getTomorrowDate()
-    );
-
-    return normalizeSameFromValidateDate(fromValidateDate);
+    return extractSameExpirationDates(cotizacionData).fromValidateDate;
 }
 
 // Función para generar nuevo token usando API_KEY y SECRET_KEY
@@ -1675,18 +1690,28 @@ app.get('/api/plates/:placa', (req, res) => {
 
 app.post('/api/expedir', requireAlliesSession, async (req, res) => {
     try {
-        const { placa, documentType, documentNumber, aliado, asesor, email, telefono, celular } = req.body;
+        const { placa, documentType, documentNumber, aliado, asesor, email, telefono, celular, emissionForm = {} } = req.body;
         const normalizedPlate = normalizePlate(placa);
+        const normalizedDocumentType = String(emissionForm.documentType || documentType || '').trim().toUpperCase();
+        const normalizedDocumentNumber = sanitizeSameDocumentNumber(emissionForm.documentNumber || documentNumber, normalizedDocumentType);
+        const regimenTypeId = Number(emissionForm.regimenTypeId);
+        const rutid = Number(emissionForm.rutid);
+        const contactPersonTypeId = Number(emissionForm.contactPersonTypeId || 0);
+        const isNit = normalizedDocumentType === 'NIT';
+
         const fallbackContact = {
-            Email: String(email || '').trim(),
-            Cellular: String(telefono || celular || '').trim()
+            Email: String(emissionForm.email || email || '').trim(),
+            Cellular: String(emissionForm.cellular || telefono || celular || '').trim(),
+            Address: String(emissionForm.address || '').trim(),
+            CityId: String(emissionForm.cityId || '').trim(),
+            StateId: String(emissionForm.stateId || '').trim()
         };
         const sendFailedNotification = (detail, contact = null, plateMetadata = null, refVenta = '') => queueAliadoNotification({
             aliado,
             asesor,
             placa: normalizedPlate,
-            documentType,
-            documentNumber,
+            documentType: normalizedDocumentType,
+            documentNumber: normalizedDocumentNumber,
             issued: false,
             policyNumber: '',
             detail,
@@ -1695,11 +1720,29 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             refVenta
         });
 
-        if (!normalizedPlate || !documentType || !documentNumber || !aliado || !asesor) {
+        if (!normalizedPlate || !normalizedDocumentType || !normalizedDocumentNumber || !aliado || !asesor) {
             const notification = sendFailedNotification('Faltan datos requeridos para la expedición');
             return res.status(400).json({
                 success: false,
                 message: 'Faltan datos requeridos para la expedición',
+                notification
+            });
+        }
+
+        if (!regimenTypeId || !rutid) {
+            const notification = sendFailedNotification('RegimenTypeId y Rutid son obligatorios');
+            return res.status(400).json({
+                success: false,
+                message: 'RegimenTypeId y Rutid son obligatorios para la emisión',
+                notification
+            });
+        }
+
+        if (isNit && !contactPersonTypeId) {
+            const notification = sendFailedNotification('ContactPersonTypeId es obligatorio cuando el documento es NIT');
+            return res.status(400).json({
+                success: false,
+                message: 'ContactPersonTypeId es obligatorio cuando el documento es NIT',
                 notification
             });
         }
@@ -1750,8 +1793,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             params: {
                 numPlaca: normalizedPlate,
                 codProducto: SAME_COD_PRODUCTO,
-                codTipdoc: getSameDocumentTypeCode(documentType),
-                numDocumento: documentNumber
+                codTipdoc: getSameDocumentTypeCode(normalizedDocumentType),
+                numDocumento: normalizedDocumentNumber
             }
         });
 
@@ -1789,16 +1832,17 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
 
         const tomadorResponse = await sameRequest('get', 'tomador', {
             params: {
-                numDocumento: documentNumber,
-                codTipdoc: getSameDocumentTypeCode(documentType)
+                numDocumento: normalizedDocumentNumber,
+                codTipdoc: getSameDocumentTypeCode(normalizedDocumentType)
             }
         });
 
         const { contact, missingFields } = buildContactFromTomador(
             tomadorResponse.data?.tomador || {},
-            documentType,
-            documentNumber,
-            fallbackContact
+            normalizedDocumentType,
+            normalizedDocumentNumber,
+            fallbackContact,
+            emissionForm
         );
         if (missingFields.length > 0) {
             const notification = sendFailedNotification(`Faltan datos del tomador en SAME: ${missingFields.join(', ')}`, contact, plateMetadata);
@@ -1819,11 +1863,15 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             Tarifa: extractSameTariff(quoteData, publicTariffData),
             Vehicle: vehicle,
             FromValidateDate: extractSameFromValidateDate(quoteData),
-            RegimenTypeId: 2,
-            Rutid: documentType === 'NIT' ? 3 : 5,
+            RegimenTypeId: regimenTypeId,
+            Rutid: rutid,
             numCelular: contact.Cellular,
             desCorreo: contact.Email
         };
+
+        if (isNit) {
+            payload.ContactPersonTypeId = contactPersonTypeId;
+        }
 
         const validationResponse = await sameRequest('post', 'valida', { data: payload });
         if (!validationResponse.data?.status) {
@@ -1847,8 +1895,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             aliado,
             asesor,
             placa: normalizedPlate,
-            documentType,
-            documentNumber,
+            documentType: normalizedDocumentType,
+            documentNumber: normalizedDocumentNumber,
             issued: Boolean(issueResponse.data?.status),
             policyNumber,
             detail: issueResponse.data?.message || 'Expedición exitosa',
@@ -1872,8 +1920,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
                 aliado: req.body.aliado,
                 asesor: req.body.asesor,
                 placa: req.body.placa,
-                documentType: req.body.documentType,
-                documentNumber: req.body.documentNumber,
+                documentType: req.body.emissionForm?.documentType || req.body.documentType,
+                documentNumber: sanitizeSameDocumentNumber(req.body.emissionForm?.documentNumber || req.body.documentNumber, req.body.emissionForm?.documentType || req.body.documentType),
                 issued: false,
                 policyNumber: '',
                 detail: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT'
@@ -2026,13 +2074,11 @@ function extractVehicleInfo(data) {
 }
 
 function extractDates(data) {
-    const now = new Date();
-    const nextYear = new Date(now);
-    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    const expirationDates = extractSameExpirationDates(data);
     
     return {
-        inicio: data.inicioVigencia || data.fechaInicio || data.vigenciaDesde || now.toISOString(),
-        fin: data.finVigencia || data.fechaFin || data.vigenciaHasta || nextYear.toISOString()
+        inicio: expirationDates.fromValidateDate,
+        fin: expirationDates.dueValidateDate
     };
 }
 

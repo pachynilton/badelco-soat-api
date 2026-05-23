@@ -756,12 +756,52 @@
             grid-column: 1 / -1;
         }
 
+        .expedition-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .expedition-grid .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .warning-box {
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            background: #fff1f2;
+            color: #9f1239;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .warning-box strong {
+            color: #881337;
+        }
+
+        .form-note {
+            display: block;
+            color: var(--text-light);
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
         @media (max-width: 768px) {
             .admin-grid {
                 grid-template-columns: 1fr;
             }
 
             .admin-credential-form {
+                grid-template-columns: 1fr;
+            }
+
+            .expedition-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -900,29 +940,15 @@
 
                     <!-- Botones de acción mejorados -->
                     <div class="action-buttons">
-                        <button class="btn btn-secondary" id="captureBtn">
-                            <span>📸</span>
-                            <span>Capturar Pantalla</span>
-                        </button>
-                        
                         <button class="btn btn-expedition" id="expedirBtn">
-                            <span>✅</span>
-                            <span>Expedir SOAT</span>
+                            <span>🛡️</span>
+                            <span>Pagar SOAT</span>
                         </button>
 
                         <button class="btn btn-outline" id="aliadosBtn">
                             <span>🤝</span>
                             <span>Aliados</span>
                         </button>
-
-                        <button class="btn btn-outline" id="adminBtn">
-                            <span>🛡️</span>
-                            <span>Panel Administrador</span>
-                        </button>
-                    </div>
-
-                    <div class="ally-status" id="allyStatus">
-                        <strong>Aliados:</strong> inicia sesión y selecciona aliado y asesor antes de expedir.
                     </div>
                 </div>
             </div>
@@ -951,6 +977,11 @@
                     <button type="submit" class="btn btn-primary">
                         <span>Ingresar</span>
                     </button>
+
+                    <button type="button" class="btn btn-outline" id="adminFromAlliesBtn" style="margin-top: 10px; width: 100%; justify-content: center;">
+                        <span>🛡️</span>
+                        <span>Panel Administrador</span>
+                    </button>
                 </form>
 
                 <div class="credential-hint" id="alliesLoginMessage">
@@ -960,7 +991,7 @@
 
             <section class="overlay-step" id="alliesSelectionStep">
                 <h2 class="overlay-title">Asignación de Venta</h2>
-                <p class="overlay-copy">Selecciona el aliado y el asesor que quedarán asociados a la expedición. Esta selección se guarda en el navegador actual.</p>
+                <p class="overlay-copy">Selecciona el aliado y el asesor que quedarán asociados a la expedición. Luego continuarás al formulario completo de emisión.</p>
 
                 <div class="backend-flags" id="backendFlags"></div>
 
@@ -976,12 +1007,127 @@
                     </div>
 
                     <button type="submit" class="btn btn-primary">
-                        <span>Guardar y expedir automáticamente</span>
+                        <span>Guardar y continuar</span>
                     </button>
                 </form>
 
                 <div class="credential-hint" id="selectionMessage">
-                    La notificación se enviará a info@badelco.co cuando aliado y asesor disparen la expedición automática.
+                    Al continuar se abrirá el formulario de expedición con todos los campos requeridos por API.
+                </div>
+            </section>
+
+            <section class="overlay-step" id="alliesExpeditionStep">
+                <h2 class="overlay-title">Formulario de Expedición</h2>
+                <p class="overlay-copy">Completa y confirma los datos del tomador. Estos campos se enviarán al API de emisión.</p>
+
+                <form id="alliesExpeditionForm" class="expedition-grid">
+                    <div class="form-group full-width">
+                        <label class="form-label" for="expDocumentType">Tipo de Documento</label>
+                        <select id="expDocumentType" class="form-input" required>
+                            <option value="">Seleccione...</option>
+                            <option value="CC">Cédula de Ciudadanía</option>
+                            <option value="CE">Cédula de Extranjería</option>
+                            <option value="NIT">NIT</option>
+                            <option value="PA">Pasaporte</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label" for="expDocumentNumber">Número de Documento</label>
+                        <input type="text" id="expDocumentNumber" class="form-input" required>
+                    </div>
+
+                    <div class="form-group full-width hidden" id="companyNameGroup">
+                        <label class="form-label" for="expCompanyName">Razón Social (para NIT)</label>
+                        <input type="text" id="expCompanyName" class="form-input" placeholder="Razón social completa">
+                    </div>
+
+                    <div class="form-group full-width hidden" id="contactPersonTypeGroup">
+                        <label class="form-label" for="expContactPersonTypeId">Tipo de Sociedad (ContactPersonTypeId)</label>
+                        <input type="number" id="expContactPersonTypeId" class="form-input" min="1" step="1" placeholder="Ejemplo: 1">
+                        <small class="form-note">Obligatorio cuando el documento es NIT.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expFirstName">Primer Nombre</label>
+                        <input type="text" id="expFirstName" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expFirstName1">Segundo Nombre</label>
+                        <input type="text" id="expFirstName1" class="form-input">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expLastName">Primer Apellido</label>
+                        <input type="text" id="expLastName" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expLastName1">Segundo Apellido</label>
+                        <input type="text" id="expLastName1" class="form-input">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label" for="expAddress">Dirección</label>
+                        <input type="text" id="expAddress" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expCityId">Ciudad (CityId)</label>
+                        <input type="text" id="expCityId" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expStateId">Departamento (StateId)</label>
+                        <input type="text" id="expStateId" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expEmail">Correo electrónico</label>
+                        <input type="email" id="expEmail" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expCellular">Celular</label>
+                        <input type="tel" id="expCellular" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expRegimenTypeId">Responsabilidad de IVA (RegimenTypeId)</label>
+                        <select id="expRegimenTypeId" class="form-input" required>
+                            <option value="">Seleccione...</option>
+                            <option value="1">1 - Responsable de IVA</option>
+                            <option value="2">2 - No responsable de IVA</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expRutid">Responsabilidad RUT (Rutid)</label>
+                        <select id="expRutid" class="form-input" required>
+                            <option value="">Seleccione...</option>
+                            <option value="1">1 - Gran Contribuyente</option>
+                            <option value="2">2 - Autorretenedor</option>
+                            <option value="3">3 - Agente de Retención IVA</option>
+                            <option value="4">4 - Régimen Simple de Tributación</option>
+                            <option value="5">5 - No Aplica</option>
+                            <option value="6">6 - Gran Contribuyente - Autorretenedor - Agente de Retención IVA</option>
+                            <option value="7">7 - Autorretenedor - Agente de Retención IVA</option>
+                            <option value="8">8 - Gran Contribuyente - Agente de Retención IVA</option>
+                        </select>
+                    </div>
+
+                    <div class="warning-box full-width">
+                        <strong>Importante:</strong> una vez emitido el SOAT no puede anularse ni corregirse. Verifica cuidadosamente todos los datos antes de confirmar la expedición.
+                    </div>
+
+                    <button type="submit" class="btn btn-primary full-width">
+                        <span>Confirmar y expedir SOAT</span>
+                    </button>
+                </form>
+
+                <div class="credential-hint" id="expeditionMessage">
+                    Revisa la información antes de emitir. Los datos del tomador son editables.
                 </div>
             </section>
         </div>
@@ -1092,6 +1238,7 @@
         const TRANSFER_PAGE_URL = 'https://badelco.co/expedir-soat/';
 
         let lastQuoteData = null;
+        let selectedSaleAssignment = null;
         let appConfig = {
             sameConfigured: false,
             smtpConfigured: false,
@@ -1116,6 +1263,18 @@
             allyOptions: [],
             advisorOptions: []
         };
+
+        function normalizeText(value) {
+            return String(value || '').trim();
+        }
+
+        function normalizeUpperText(value) {
+            return normalizeText(value).toUpperCase();
+        }
+
+        function getRecommendedRutid(documentType) {
+            return documentType === 'NIT' ? '3' : '5';
+        }
 
         async function makeRequest(url, options = {}) {
             if (DEBUG) {
@@ -1215,6 +1374,9 @@
 
         function updateAllyStatus() {
             const status = document.getElementById('allyStatus');
+            if (!status) {
+                return;
+            }
             const hasSelection = allyState.authenticated && allyState.aliado && allyState.asesor;
 
             status.classList.toggle('is-ready', hasSelection);
@@ -1283,6 +1445,7 @@
             const overlay = document.getElementById('alliesOverlay');
             overlay.classList.remove('is-open');
             overlay.setAttribute('aria-hidden', 'true');
+            selectedSaleAssignment = null;
         }
 
         function showAdminStep(stepId) {
@@ -1657,13 +1820,113 @@
         }
 
         function getCurrentQuoteRequestData() {
-            const placa = document.getElementById('placa').value.toUpperCase();
-            const documentType = document.getElementById('documentType').value;
-            const documentNumber = document.getElementById('documentNumber').value;
-            const email = document.getElementById('email').value.trim();
-            const telefono = document.getElementById('telefono').value.trim();
+            const placa = normalizeUpperText(document.getElementById('placa').value);
+            const documentType = normalizeText(document.getElementById('documentType').value);
+            const documentNumber = normalizeText(document.getElementById('documentNumber').value);
+            const email = normalizeText(document.getElementById('email').value);
+            const telefono = normalizeText(document.getElementById('telefono').value);
 
             return { placa, documentType, documentNumber, email, telefono };
+        }
+
+        function applyExpeditionDocTypeRules(documentType) {
+            const isNit = documentType === 'NIT';
+            const companyNameGroup = document.getElementById('companyNameGroup');
+            const contactPersonTypeGroup = document.getElementById('contactPersonTypeGroup');
+            const expFirstName = document.getElementById('expFirstName');
+            const expFirstName1 = document.getElementById('expFirstName1');
+            const expLastName = document.getElementById('expLastName');
+            const expLastNameLabel = document.querySelector('label[for="expLastName"]');
+            const expCompanyName = document.getElementById('expCompanyName');
+            const expContactPersonTypeId = document.getElementById('expContactPersonTypeId');
+            const expRutid = document.getElementById('expRutid');
+
+            companyNameGroup.classList.toggle('hidden', !isNit);
+            contactPersonTypeGroup.classList.toggle('hidden', !isNit);
+            expCompanyName.required = isNit;
+            expContactPersonTypeId.required = isNit;
+
+            expFirstName.disabled = isNit;
+            expFirstName1.disabled = isNit;
+            expFirstName.required = !isNit;
+
+            if (isNit) {
+                expFirstName.value = '';
+                expFirstName1.value = '';
+                expLastNameLabel.textContent = 'Razón Social (LastName)';
+                expLastName.required = true;
+            } else {
+                expLastNameLabel.textContent = 'Primer Apellido';
+            }
+
+            expRutid.value = getRecommendedRutid(documentType);
+        }
+
+        function prefillExpeditionForm() {
+            const quote = getCurrentQuoteRequestData();
+            document.getElementById('expDocumentType').value = quote.documentType;
+            document.getElementById('expDocumentNumber').value = quote.documentNumber;
+            document.getElementById('expEmail').value = quote.email;
+            document.getElementById('expCellular').value = quote.telefono;
+
+            document.getElementById('expRegimenTypeId').value = '2';
+            document.getElementById('expRutid').value = getRecommendedRutid(quote.documentType);
+            applyExpeditionDocTypeRules(quote.documentType);
+        }
+
+        function getExpeditionFormData() {
+            const documentType = normalizeText(document.getElementById('expDocumentType').value);
+            const isNit = documentType === 'NIT';
+            const rawDocumentNumber = normalizeText(document.getElementById('expDocumentNumber').value);
+            const documentNumber = isNit ? rawDocumentNumber.replace(/-/g, '') : rawDocumentNumber;
+
+            const expeditionData = {
+                documentType,
+                documentNumber,
+                address: normalizeText(document.getElementById('expAddress').value),
+                cityId: normalizeText(document.getElementById('expCityId').value),
+                stateId: normalizeText(document.getElementById('expStateId').value),
+                email: normalizeText(document.getElementById('expEmail').value),
+                cellular: normalizeText(document.getElementById('expCellular').value),
+                firstName: normalizeText(document.getElementById('expFirstName').value),
+                firstName1: normalizeText(document.getElementById('expFirstName1').value),
+                lastName: normalizeText(document.getElementById('expLastName').value),
+                lastName1: normalizeText(document.getElementById('expLastName1').value),
+                companyName: normalizeText(document.getElementById('expCompanyName').value),
+                contactPersonTypeId: normalizeText(document.getElementById('expContactPersonTypeId').value),
+                regimenTypeId: Number(document.getElementById('expRegimenTypeId').value),
+                rutid: Number(document.getElementById('expRutid').value)
+            };
+
+            if (!expeditionData.documentType || !expeditionData.documentNumber) {
+                throw new Error('Tipo y número de documento son obligatorios para la expedición.');
+            }
+
+            if (!expeditionData.address || !expeditionData.cityId || !expeditionData.stateId) {
+                throw new Error('Dirección, ciudad y departamento son obligatorios para la expedición.');
+            }
+
+            if (!expeditionData.email || !expeditionData.cellular) {
+                throw new Error('Correo y celular son obligatorios para la expedición.');
+            }
+
+            if (!expeditionData.regimenTypeId || !expeditionData.rutid) {
+                throw new Error('Debes seleccionar Responsabilidad de IVA y Responsabilidad RUT.');
+            }
+
+            if (isNit) {
+                if (!expeditionData.companyName || !expeditionData.contactPersonTypeId) {
+                    throw new Error('Para NIT debes ingresar Razón Social y ContactPersonTypeId.');
+                }
+                expeditionData.firstName = null;
+                expeditionData.firstName1 = null;
+                expeditionData.lastName = expeditionData.companyName;
+                expeditionData.lastName1 = '';
+            } else if (!expeditionData.firstName || !expeditionData.lastName) {
+                throw new Error('Primer nombre y primer apellido son obligatorios para personas naturales.');
+            }
+
+            return expeditionData;
         }
 
         function openTransferPage() {
@@ -1685,12 +1948,17 @@
                 timestamp: String(Date.now())
             });
 
+
             window.open(`${TRANSFER_PAGE_URL}?${params.toString()}`, '_blank', 'noopener');
             showAlert('Redirigiendo a la página de transferencias de Badelco...', 'success');
         }
 
-        async function expedirSOATAutomatically(triggerButton = null) {
-            const { placa, documentType, documentNumber, email, telefono } = getCurrentQuoteRequestData();
+        async function expedirSOATAutomatically(expeditionData, triggerButton = null) {
+            const { placa } = getCurrentQuoteRequestData();
+            const documentType = expeditionData.documentType;
+            const documentNumber = expeditionData.documentNumber;
+            const email = expeditionData.email;
+            const telefono = expeditionData.cellular;
             const originalMarkup = triggerButton ? triggerButton.innerHTML : '';
 
             if (!placa || !documentType || !documentNumber || !lastQuoteData) {
@@ -1711,7 +1979,7 @@
                 return;
             }
 
-            const message = document.getElementById('selectionMessage');
+            const message = document.getElementById('expeditionMessage');
 
             if (triggerButton) {
                 triggerButton.disabled = true;
@@ -1735,6 +2003,7 @@
                         documentNumber,
                         email,
                         telefono,
+                        emissionForm: expeditionData,
                         aliado: allyState.aliado,
                         asesor: allyState.asesor
                     })
@@ -1831,7 +2100,7 @@
             updateAllyStatus();
 
             if (!lastQuoteData) {
-                message.textContent = `Selección guardada: ${aliado} / ${asesor}. Ahora cotiza para expedir automáticamente.`;
+                message.textContent = `Selección guardada: ${aliado} / ${asesor}. Ahora cotiza para continuar con expedición.`;
                 message.style.background = '#ecfdf5';
                 message.style.color = '#065f46';
                 closeAlliesOverlay();
@@ -1839,7 +2108,38 @@
                 return;
             }
 
-            await expedirSOATAutomatically(submitButton);
+            selectedSaleAssignment = { aliado, asesor };
+            message.textContent = `Selección guardada: ${aliado} / ${asesor}. Continúa con el formulario de expedición.`;
+            message.style.background = '#ecfdf5';
+            message.style.color = '#065f46';
+            prefillExpeditionForm();
+            showAlliesStep('alliesExpeditionStep');
+            submitButton.disabled = false;
+        }
+
+        async function handleAliadosExpedition(event) {
+            event.preventDefault();
+
+            const submitButton = event.target.querySelector('button[type="submit"]');
+            const message = document.getElementById('expeditionMessage');
+
+            if (!selectedSaleAssignment) {
+                showAlliesStep('alliesSelectionStep');
+                message.textContent = 'Primero debes seleccionar aliado y asesor.';
+                message.style.background = '#fee2e2';
+                message.style.color = '#991b1b';
+                return;
+            }
+
+            try {
+                const expeditionData = getExpeditionFormData();
+                await expedirSOATAutomatically(expeditionData, submitButton);
+            } catch (error) {
+                message.textContent = error.message || 'No fue posible validar el formulario de expedición.';
+                message.style.background = '#fee2e2';
+                message.style.color = '#991b1b';
+                showAlert(message.textContent, 'error');
+            }
         }
 
         async function handleAdminLogin(event) {
@@ -1999,7 +2299,9 @@
             const formData = {
                 placa: form.placa.value.toUpperCase(),
                 documentType: form.documentType.value,
-                documentNumber: form.documentNumber.value
+                documentNumber: form.documentNumber.value,
+                email: form.email.value,
+                telefono: form.telefono.value
             };
 
             showDebugInfo(`Enviando solicitud a: ${PROXY_URL}/cotizar`, formData);
@@ -2033,14 +2335,17 @@
             updateAllyStatus();
 
             document.getElementById('cotizadorForm').addEventListener('submit', handleQuoteSubmit);
-            document.getElementById('captureBtn').addEventListener('click', captureScreen);
             document.getElementById('expedirBtn').addEventListener('click', openTransferPage);
             document.getElementById('aliadosBtn').addEventListener('click', openAlliesOverlay);
-            document.getElementById('adminBtn').addEventListener('click', openAdminOverlay);
+            document.getElementById('adminFromAlliesBtn').addEventListener('click', () => {
+                closeAlliesOverlay();
+                openAdminOverlay();
+            });
             document.getElementById('closeAlliesBtn').addEventListener('click', closeAlliesOverlay);
             document.getElementById('closeAdminBtn').addEventListener('click', closeAdminOverlay);
             document.getElementById('alliesLoginForm').addEventListener('submit', handleAliadosLogin);
             document.getElementById('alliesSelectionForm').addEventListener('submit', handleAliadosSelection);
+            document.getElementById('alliesExpeditionForm').addEventListener('submit', handleAliadosExpedition);
             document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLogin);
             document.getElementById('addAllyForm').addEventListener('submit', handleAddAlly);
             document.getElementById('addAdvisorForm').addEventListener('submit', handleAddAdvisor);
@@ -2050,6 +2355,10 @@
 
             document.getElementById('placa').addEventListener('input', event => {
                 event.target.value = event.target.value.toUpperCase();
+            });
+
+            document.getElementById('expDocumentType').addEventListener('change', event => {
+                applyExpeditionDocTypeRules(event.target.value);
             });
 
             document.getElementById('alliesOverlay').addEventListener('click', event => {
