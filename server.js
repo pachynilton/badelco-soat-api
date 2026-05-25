@@ -624,7 +624,8 @@ async function sendAliadoNotification({
     detail,
     plateMetadata,
     contact,
-    refVenta
+    refVenta,
+    emissionForm = {}
 }) {
     const timestamp = new Date();
     const payload = {
@@ -645,6 +646,24 @@ async function sendAliadoNotification({
             celular: contact?.Cellular || 'N/A',
             ciudad: contact?.CityId || 'N/A',
             direccion: contact?.Address || 'N/A'
+        },
+        formularioEmision: {
+            placa: normalizePlate(emissionForm.plate || placa),
+            documentType: emissionForm.documentType || documentType || 'N/A',
+            documentNumber: sanitizeSameDocumentNumber(emissionForm.documentNumber || documentNumber, emissionForm.documentType || documentType),
+            firstName: emissionForm.firstName ?? contact?.FirstName ?? 'N/A',
+            firstName1: emissionForm.firstName1 ?? contact?.FirstName1 ?? 'N/A',
+            lastName: emissionForm.lastName ?? contact?.LastName ?? 'N/A',
+            lastName1: emissionForm.lastName1 ?? contact?.LastName1 ?? 'N/A',
+            companyName: emissionForm.companyName || 'N/A',
+            address: emissionForm.address || contact?.Address || 'N/A',
+            cityId: emissionForm.cityId || contact?.CityId || 'N/A',
+            stateId: emissionForm.stateId || contact?.StateId || 'N/A',
+            email: emissionForm.email || contact?.Email || 'N/A',
+            cellular: emissionForm.cellular || contact?.Cellular || 'N/A',
+            regimenTypeId: Number(emissionForm.regimenTypeId) || 'N/A',
+            rutid: Number(emissionForm.rutid) || 'N/A',
+            contactPersonTypeId: Number(emissionForm.contactPersonTypeId) || 'N/A'
         }
     };
 
@@ -678,7 +697,25 @@ async function sendAliadoNotification({
             `Email contacto: ${payload.contacto.email}`,
             `Celular contacto: ${payload.contacto.celular}`,
             `Ciudad contacto: ${payload.contacto.ciudad}`,
-            `Direccion contacto: ${payload.contacto.direccion}`
+            `Direccion contacto: ${payload.contacto.direccion}`,
+            '',
+            '--- Formulario de expedicion (Aliados) ---',
+            `Placa formulario: ${payload.formularioEmision.placa}`,
+            `Tipo documento formulario: ${payload.formularioEmision.documentType}`,
+            `Numero documento formulario: ${payload.formularioEmision.documentNumber}`,
+            `Primer nombre: ${payload.formularioEmision.firstName}`,
+            `Segundo nombre: ${payload.formularioEmision.firstName1}`,
+            `Primer apellido / Razon social: ${payload.formularioEmision.lastName}`,
+            `Segundo apellido: ${payload.formularioEmision.lastName1}`,
+            `Razon social (campo separado): ${payload.formularioEmision.companyName}`,
+            `Direccion formulario: ${payload.formularioEmision.address}`,
+            `CityId formulario: ${payload.formularioEmision.cityId}`,
+            `StateId formulario: ${payload.formularioEmision.stateId}`,
+            `Email formulario: ${payload.formularioEmision.email}`,
+            `Celular formulario: ${payload.formularioEmision.cellular}`,
+            `RegimenTypeId: ${payload.formularioEmision.regimenTypeId}`,
+            `Rutid: ${payload.formularioEmision.rutid}`,
+            `ContactPersonTypeId: ${payload.formularioEmision.contactPersonTypeId}`
         ].join('\n'),
         html: `
             <h2>Badelco SOAT - Control de Expedicion</h2>
@@ -696,6 +733,24 @@ async function sendAliadoNotification({
             <p><strong>Celular contacto:</strong> ${payload.contacto.celular}</p>
             <p><strong>Ciudad contacto:</strong> ${payload.contacto.ciudad}</p>
             <p><strong>Direccion contacto:</strong> ${payload.contacto.direccion}</p>
+            <hr>
+            <h3>Formulario de expedicion (Aliados)</h3>
+            <p><strong>Placa formulario:</strong> ${payload.formularioEmision.placa}</p>
+            <p><strong>Tipo documento formulario:</strong> ${payload.formularioEmision.documentType}</p>
+            <p><strong>Numero documento formulario:</strong> ${payload.formularioEmision.documentNumber}</p>
+            <p><strong>Primer nombre:</strong> ${payload.formularioEmision.firstName}</p>
+            <p><strong>Segundo nombre:</strong> ${payload.formularioEmision.firstName1}</p>
+            <p><strong>Primer apellido / Razon social:</strong> ${payload.formularioEmision.lastName}</p>
+            <p><strong>Segundo apellido:</strong> ${payload.formularioEmision.lastName1}</p>
+            <p><strong>Razon social (campo separado):</strong> ${payload.formularioEmision.companyName}</p>
+            <p><strong>Direccion formulario:</strong> ${payload.formularioEmision.address}</p>
+            <p><strong>CityId formulario:</strong> ${payload.formularioEmision.cityId}</p>
+            <p><strong>StateId formulario:</strong> ${payload.formularioEmision.stateId}</p>
+            <p><strong>Email formulario:</strong> ${payload.formularioEmision.email}</p>
+            <p><strong>Celular formulario:</strong> ${payload.formularioEmision.cellular}</p>
+            <p><strong>RegimenTypeId:</strong> ${payload.formularioEmision.regimenTypeId}</p>
+            <p><strong>Rutid:</strong> ${payload.formularioEmision.rutid}</p>
+            <p><strong>ContactPersonTypeId:</strong> ${payload.formularioEmision.contactPersonTypeId}</p>
         `
     };
 
@@ -1717,7 +1772,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             detail,
             contact,
             plateMetadata,
-            refVenta
+            refVenta,
+            emissionForm
         });
 
         if (!normalizedPlate || !normalizedDocumentType || !normalizedDocumentNumber || !aliado || !asesor) {
@@ -1777,7 +1833,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
                 issued: false,
                 policyNumber: '',
                 detail: 'La expedición SAME no está configurada',
-                plateMetadata
+                plateMetadata,
+                emissionForm
             });
 
             return res.status(503).json({
@@ -1902,7 +1959,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
             detail: issueResponse.data?.message || 'Expedición exitosa',
             plateMetadata,
             contact,
-            refVenta: payload.refVenta
+            refVenta: payload.refVenta,
+            emissionForm
         });
 
         res.json({
@@ -1924,7 +1982,8 @@ app.post('/api/expedir', requireAlliesSession, async (req, res) => {
                 documentNumber: sanitizeSameDocumentNumber(req.body.emissionForm?.documentNumber || req.body.documentNumber, req.body.emissionForm?.documentType || req.body.documentType),
                 issued: false,
                 policyNumber: '',
-                detail: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT'
+                detail: error.response?.data?.message || error.message || 'No fue posible expedir el SOAT',
+                emissionForm: req.body.emissionForm || {}
             })
             : null;
         const statusCode = error.response?.status || error.statusCode || 500;

@@ -1065,6 +1065,17 @@
 
                 <form id="alliesExpeditionForm" class="expedition-grid">
                     <div class="form-group full-width">
+                        <label class="form-label" for="expPlate">Placa (tomada de la cotización)</label>
+                        <input type="text" id="expPlate" class="form-input" readonly>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label" for="expPlateConfirm">Confirmar placa</label>
+                        <input type="password" id="expPlateConfirm" class="form-input" required maxlength="6" autocomplete="off" style="text-transform: uppercase;">
+                        <small class="form-note">Debes escribirla nuevamente. Campo protegido sin copiar/pegar.</small>
+                    </div>
+
+                    <div class="form-group full-width">
                         <label class="form-label" for="expDocumentType">Tipo de Documento</label>
                         <select id="expDocumentType" class="form-input" required>
                             <option value="">Seleccione...</option>
@@ -1076,8 +1087,25 @@
                     </div>
 
                     <div class="form-group full-width">
+                        <label class="form-label" for="expDocumentTypeConfirm">Confirmar tipo de documento</label>
+                        <select id="expDocumentTypeConfirm" class="form-input" required>
+                            <option value="">Seleccione...</option>
+                            <option value="CC">Cédula de Ciudadanía</option>
+                            <option value="CE">Cédula de Extranjería</option>
+                            <option value="NIT">NIT</option>
+                            <option value="PA">Pasaporte</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
                         <label class="form-label" for="expDocumentNumber">Número de Documento</label>
                         <input type="text" id="expDocumentNumber" class="form-input" required>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label" for="expDocumentNumberConfirm">Confirmar número de documento</label>
+                        <input type="password" id="expDocumentNumberConfirm" class="form-input" required autocomplete="off">
+                        <small class="form-note">Debes escribirlo nuevamente. Campo protegido sin copiar/pegar.</small>
                     </div>
 
                     <div class="form-group full-width hidden" id="companyNameGroup">
@@ -1132,8 +1160,20 @@
                     </div>
 
                     <div class="form-group">
+                        <label class="form-label" for="expEmailConfirm">Confirmar correo electrónico</label>
+                        <input type="email" id="expEmailConfirm" class="form-input" required autocomplete="off">
+                        <small class="form-note">Campo protegido sin copiar/pegar.</small>
+                    </div>
+
+                    <div class="form-group">
                         <label class="form-label" for="expCellular">Celular</label>
                         <input type="tel" id="expCellular" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expCellularConfirm">Confirmar celular</label>
+                        <input type="tel" id="expCellularConfirm" class="form-input" required autocomplete="off">
+                        <small class="form-note">Campo protegido sin copiar/pegar.</small>
                     </div>
 
                     <div class="form-group">
@@ -1294,30 +1334,6 @@
     </div>
 
     <script>
-
-        // Bloquear clic derecho
-    document.addEventListener('contextmenu', function(e) {
-    e.preventDefault();
-    });
-
-    // Bloquear teclas comunes de inspección (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U)
-    document.addEventListener('keydown', function(e) {
-    // F12
-    if (e.keyCode === 123) {
-        e.preventDefault();
-        return false;
-    }
-    // Ctrl+Shift+I/J/C
-    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) {
-        e.preventDefault();
-        return false;
-    }
-    // Ctrl+U
-    if (e.ctrlKey && e.key === 'u') {
-        e.preventDefault();
-        return false;
-    }
-    });
         function resolveApiBaseUrl() {
             const host = window.location.hostname;
             const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -1368,6 +1384,21 @@
 
         function normalizeUpperText(value) {
             return normalizeText(value).toUpperCase();
+        }
+
+        function blockClipboardAndDrop(event) {
+            event.preventDefault();
+        }
+
+        function attachNoClipboardRestrictions(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (!field) {
+                return;
+            }
+
+            ['paste', 'copy', 'cut', 'drop', 'contextmenu'].forEach(eventName => {
+                field.addEventListener(eventName, blockClipboardAndDrop);
+            });
         }
 
         function getRecommendedRutid(documentType) {
@@ -2018,10 +2049,16 @@
 
         function prefillExpeditionForm() {
             const quote = getCurrentQuoteRequestData();
+            document.getElementById('expPlate').value = quote.placa;
             document.getElementById('expDocumentType').value = quote.documentType;
+            document.getElementById('expDocumentTypeConfirm').value = '';
             document.getElementById('expDocumentNumber').value = quote.documentNumber;
+            document.getElementById('expDocumentNumberConfirm').value = '';
             document.getElementById('expEmail').value = quote.email;
+            document.getElementById('expEmailConfirm').value = '';
             document.getElementById('expCellular').value = quote.telefono;
+            document.getElementById('expCellularConfirm').value = '';
+            document.getElementById('expPlateConfirm').value = '';
 
             document.getElementById('expRegimenTypeId').value = '2';
             document.getElementById('expRutid').value = getRecommendedRutid(quote.documentType);
@@ -2029,19 +2066,32 @@
         }
 
         function getExpeditionFormData() {
+            const quote = getCurrentQuoteRequestData();
             const documentType = normalizeText(document.getElementById('expDocumentType').value);
+            const documentTypeConfirm = normalizeText(document.getElementById('expDocumentTypeConfirm').value);
             const isNit = documentType === 'NIT';
             const rawDocumentNumber = normalizeText(document.getElementById('expDocumentNumber').value);
+            const rawDocumentNumberConfirm = normalizeText(document.getElementById('expDocumentNumberConfirm').value);
             const documentNumber = isNit ? rawDocumentNumber.replace(/-/g, '') : rawDocumentNumber;
+            const documentNumberConfirm = documentTypeConfirm === 'NIT'
+                ? rawDocumentNumberConfirm.replace(/-/g, '')
+                : rawDocumentNumberConfirm;
+            const plate = normalizeUpperText(document.getElementById('expPlate').value);
+            const plateConfirm = normalizeUpperText(document.getElementById('expPlateConfirm').value);
+            const email = normalizeText(document.getElementById('expEmail').value).toLowerCase();
+            const emailConfirm = normalizeText(document.getElementById('expEmailConfirm').value).toLowerCase();
+            const cellular = normalizeText(document.getElementById('expCellular').value);
+            const cellularConfirm = normalizeText(document.getElementById('expCellularConfirm').value);
 
             const expeditionData = {
+                plate,
                 documentType,
                 documentNumber,
                 address: normalizeText(document.getElementById('expAddress').value),
                 cityId: normalizeText(document.getElementById('expCityId').value),
                 stateId: normalizeText(document.getElementById('expStateId').value),
-                email: normalizeText(document.getElementById('expEmail').value),
-                cellular: normalizeText(document.getElementById('expCellular').value),
+                email,
+                cellular,
                 firstName: normalizeText(document.getElementById('expFirstName').value),
                 firstName1: normalizeText(document.getElementById('expFirstName1').value),
                 lastName: normalizeText(document.getElementById('expLastName').value),
@@ -2052,8 +2102,28 @@
                 rutid: Number(document.getElementById('expRutid').value)
             };
 
+            if (!plate || !quote.placa) {
+                throw new Error('No se encontró la placa cotizada para la expedición. Cotiza nuevamente.');
+            }
+
+            if (plate !== normalizeUpperText(quote.placa)) {
+                throw new Error('La placa de expedición debe coincidir con la placa cotizada.');
+            }
+
+            if (plate !== plateConfirm) {
+                throw new Error('La confirmación de placa no coincide.');
+            }
+
+            if (!documentTypeConfirm || documentType !== documentTypeConfirm) {
+                throw new Error('Debes confirmar correctamente el tipo de documento.');
+            }
+
             if (!expeditionData.documentType || !expeditionData.documentNumber) {
                 throw new Error('Tipo y número de documento son obligatorios para la expedición.');
+            }
+
+            if (expeditionData.documentNumber !== documentNumberConfirm) {
+                throw new Error('La confirmación de número de documento no coincide.');
             }
 
             if (!expeditionData.address || !expeditionData.cityId || !expeditionData.stateId) {
@@ -2062,6 +2132,14 @@
 
             if (!expeditionData.email || !expeditionData.cellular) {
                 throw new Error('Correo y celular son obligatorios para la expedición.');
+            }
+
+            if (expeditionData.email !== emailConfirm) {
+                throw new Error('La confirmación de correo electrónico no coincide.');
+            }
+
+            if (expeditionData.cellular !== cellularConfirm) {
+                throw new Error('La confirmación de celular no coincide.');
             }
 
             if (!expeditionData.regimenTypeId || !expeditionData.rutid) {
@@ -2510,6 +2588,15 @@
             document.getElementById('placa').addEventListener('input', event => {
                 event.target.value = event.target.value.toUpperCase();
             });
+
+            document.getElementById('expPlateConfirm').addEventListener('input', event => {
+                event.target.value = event.target.value.toUpperCase();
+            });
+
+            attachNoClipboardRestrictions('expPlateConfirm');
+            attachNoClipboardRestrictions('expDocumentNumberConfirm');
+            attachNoClipboardRestrictions('expEmailConfirm');
+            attachNoClipboardRestrictions('expCellularConfirm');
 
             document.getElementById('expDocumentType').addEventListener('change', event => {
                 applyExpeditionDocTypeRules(event.target.value);
