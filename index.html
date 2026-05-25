@@ -578,6 +578,7 @@
             justify-content: center;
             padding: 20px;
             z-index: 1200;
+            overflow-y: auto;
         }
 
         .overlay-page.is-open {
@@ -591,6 +592,9 @@
             box-shadow: 0 30px 70px rgba(15, 23, 42, 0.28);
             padding: 32px;
             position: relative;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .overlay-close {
@@ -675,6 +679,10 @@
         @media (max-width: 640px) {
             .backend-flags {
                 grid-template-columns: 1fr;
+            }
+
+            .overlay-page {
+                align-items: flex-start;
             }
 
             .overlay-card {
