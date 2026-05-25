@@ -19,7 +19,7 @@ Copiar desde `.env.example` y cargar en Railway Variables:
 - `NODE_ENV=production`
 - `PORT=3000`
 - `ENABLE_DEBUG_ENDPOINTS=false`
-- `ALLOWED_ORIGINS=https://badelco-soat-api-production.up.railway.app`
+- `ALLOWED_ORIGINS=https://facilsoat.badelco.co`
 - `API_BASE_URL=https://pagoalafija.co/api/public`
 - `SAME_API_BASE_URL=https://pagoalafija.co/api/public`
 - `API_KEY=...`

@@ -26,7 +26,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'"],
             scriptSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'", "https://dev.same.com.co", "https://badelco-soat-api-production.up.railway.app"]
+            connectSrc: ["'self'", "https://dev.same.com.co", "https://facilsoat.badelco.co"]
         }
     }
 }));
@@ -77,7 +77,7 @@ app.use((req, res, next) => {
 });
 
 const defaultAllowedOrigins = [
-    'https://badelco-soat-api-production.up.railway.app',
+    'https://facilsoat.badelco.co',
     'http://localhost:3000',
     'http://localhost:5500',
     'http://localhost:5501'
