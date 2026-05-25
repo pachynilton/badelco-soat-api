@@ -1767,6 +1767,17 @@
             });
         }
 
+        function getQuoteExpirationDates(data) {
+            const expiration = data?.debug?.originalResponse?.data?.Expiration || data?.Expiration || {};
+            const startDate = expiration.FromValidateDate || data?.inicioVigencia || null;
+            const endDate = expiration.DueValidateDate || data?.finVigencia || null;
+
+            return {
+                startDate,
+                endDate
+            };
+        }
+
         function openVigencyOverlay() {
             const overlay = document.getElementById('vigencyOverlay');
             overlay.classList.add('is-open');
@@ -1809,12 +1820,13 @@
             const startDate = document.getElementById('vigencyStartDate');
             const endDate = document.getElementById('vigencyEndDate');
             const secondaryCopy = document.getElementById('vigencySecondaryCopy');
+            const expirationDates = getQuoteExpirationDates(data);
 
             statusPill.textContent = status.label;
             statusPill.className = `vigency-pill ${status.key === 'valid' ? 'is-valid' : 'is-expired'}`;
             mainCopy.textContent = status.message;
-            startDate.textContent = formatDate(data.inicioVigencia || new Date());
-            endDate.textContent = formatDate(data.finVigencia || addYear(new Date()));
+            startDate.textContent = expirationDates.startDate ? formatDate(expirationDates.startDate) : '-';
+            endDate.textContent = expirationDates.endDate ? formatDate(expirationDates.endDate) : '-';
             secondaryCopy.textContent = status.key === 'valid'
                 ? 'La fecha de inicio mostrada corresponde al momento en que entrará a regir la nueva póliza cotizada.'
                 : 'La cobertura cotizada inicia en la fecha indicada y debe revisarse antes de continuar con el proceso.';
@@ -1873,6 +1885,7 @@
             const costoPlataforma = 20000;
             const totalConPlataforma = precio + costoPlataforma;
             const vehicleInfo = getVehicleInfo(data);
+            const expirationDates = getQuoteExpirationDates(data);
 
             lastQuoteData = data;
             priceDisplay.textContent = formatMoney(totalConPlataforma);
@@ -1886,8 +1899,8 @@
                 { label: 'Chasis', value: vehicleInfo.chasis },
                 { label: 'Motor', value: vehicleInfo.motor },
                 { label: 'Año', value: vehicleInfo.año },
-                { label: 'Inicio de Vigencia', value: formatDate(data.inicioVigencia || new Date()) },
-                { label: 'Fin de Vigencia', value: formatDate(data.finVigencia || addYear(new Date())) },
+                { label: 'Inicio de Vigencia', value: expirationDates.startDate ? formatDate(expirationDates.startDate) : 'Pendiente' },
+                { label: 'Fin de Vigencia', value: expirationDates.endDate ? formatDate(expirationDates.endDate) : 'Pendiente' },
                 { label: 'Valor SOAT', value: precio > 0 ? formatMoney(precio) : 'Consultando...' },
                 { label: 'Costo de Plataforma', value: formatMoney(costoPlataforma) },
                 { label: 'Total a Pagar', value: formatMoney(totalConPlataforma), isTotal: true }
