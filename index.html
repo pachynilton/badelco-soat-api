@@ -1882,7 +1882,7 @@
             const resultDetails = document.getElementById('resultDetails');
             const plateMetadata = data.plateMetadata || null;
             const precio = getQuotePrice(data);
-            const costoPlataforma = 0;
+            const costoPlataforma = 20000;
             const totalConPlataforma = precio + costoPlataforma;
             const vehicleInfo = getVehicleInfo(data);
             const expirationDates = getQuoteExpirationDates(data);
@@ -1902,7 +1902,7 @@
                 { label: 'Inicio de Vigencia', value: expirationDates.startDate ? formatDate(expirationDates.startDate) : 'Pendiente' },
                 { label: 'Fin de Vigencia', value: expirationDates.endDate ? formatDate(expirationDates.endDate) : 'Pendiente' },
                 { label: 'Valor SOAT', value: precio > 0 ? formatMoney(precio) : 'Consultando...' },
-                { label: 'Costo de Plataforma', value: formatMoney(costoPlataforma) },
+                { label: 'Recaudo Digital', value: formatMoney(costoPlataforma) },
                 { label: 'Total a Pagar', value: formatMoney(totalConPlataforma), isTotal: true }
             ];
 
