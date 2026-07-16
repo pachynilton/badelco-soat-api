@@ -1634,8 +1634,10 @@
 
                 <form id="alliesExpeditionForm" class="expedition-grid">
                     <div class="form-group full-width">
-                        <label class="form-label" for="expPlate">Placa (tomada de la cotización)</label>
-                        <input type="text" id="expPlate" class="form-input" readonly>
+                        <label class="form-label" for="expPlateMasked">Placa registrada (oculta)</label>
+                        <input type="password" id="expPlateMasked" class="form-input" value="VALIDADO" readonly autocomplete="new-password">
+                        <input type="hidden" id="expPlate">
+                        <small class="form-note">El primer valor permanece oculto para una confirmación independiente.</small>
                     </div>
 
                     <div class="form-group full-width">
@@ -1645,14 +1647,10 @@
                     </div>
 
                     <div class="form-group full-width">
-                        <label class="form-label" for="expDocumentType">Tipo de Documento</label>
-                        <select id="expDocumentType" class="form-input" required>
-                            <option value="">Seleccione...</option>
-                            <option value="CC">Cédula de Ciudadanía</option>
-                            <option value="CE">Cédula de Extranjería</option>
-                            <option value="NIT">NIT</option>
-                            <option value="PA">Pasaporte</option>
-                        </select>
+                        <label class="form-label" for="expDocumentTypeMasked">Tipo de documento registrado (oculto)</label>
+                        <input type="password" id="expDocumentTypeMasked" class="form-input" value="VALIDADO" readonly autocomplete="new-password">
+                        <input type="hidden" id="expDocumentType">
+                        <small class="form-note">El primer valor permanece oculto para una confirmación independiente.</small>
                     </div>
 
                     <div class="form-group full-width">
@@ -1668,8 +1666,10 @@
                     </div>
 
                     <div class="form-group full-width">
-                        <label class="form-label" for="expDocumentNumber">Número de Documento</label>
-                        <input type="text" id="expDocumentNumber" class="form-input" required>
+                        <label class="form-label" for="expDocumentNumberMasked">Número de documento registrado (oculto)</label>
+                        <input type="password" id="expDocumentNumberMasked" class="form-input" value="VALIDADO" readonly autocomplete="new-password">
+                        <input type="hidden" id="expDocumentNumber">
+                        <small class="form-note">El primer valor permanece oculto para una confirmación independiente.</small>
                     </div>
 
                     <div class="form-group full-width">
